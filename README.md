@@ -4,6 +4,8 @@
 >
 > Built with Swift + SwiftUI, SceneKit, and [foxtrot](https://github.com/Formlabs/foxtrot).
 
+https://github.com/user-attachments/assets/339781d5-3b7b-41c0-b411-d992e49ae5bc
+
 ## ✨ What does it do?
 
 * **Quick Look Preview** – Press spacebar in Finder to open an interactive 3d preview of the file (similar to the built-in preview for STL files).
