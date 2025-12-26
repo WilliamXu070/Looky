@@ -1,4 +1,4 @@
-# quick-look-step
+# QuickLookStep.app
 
 > **_Fast_** QuickLook & Finder thumbnail support for STEP (`.step` / `.stp`) 3d model files on macOS.
 >
@@ -50,4 +50,4 @@ killall Finder
 
 Let's make this better together. Issues and PRs are welcome.
 
-This project is licensed under the terms of the **MIT License**. Do what you want with it but I don't guarantee it works.
+This project is licensed under the terms of the **MIT License**. Do what you want with it but I don't guarantee it works. If you do something neat with it, I'd always appreciate a shoutout!
