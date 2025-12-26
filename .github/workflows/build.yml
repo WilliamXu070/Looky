@@ -1,0 +1,73 @@
+name: Build and Notarize
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Import signing certificate
+        if: github.event_name != 'pull_request'
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+
+      - name: Archive
+        run: |
+          xcodebuild \
+            -project QuickLookStep/QuickLookStep.xcodeproj \
+            -scheme QuickLookStep \
+            -configuration Release \
+            -destination "generic/platform=macOS" \
+            -archivePath "$PWD/build/QuickLookStep.xcarchive" \
+            archive
+
+      - name: Package app
+        run: |
+          APP_PATH="$PWD/build/QuickLookStep.xcarchive/Products/Applications/QuickLookStep.app"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$PWD/build/QuickLookStep.zip"
+
+      - name: Notarize
+        if: github.event_name != 'pull_request'
+        env:
+          APPSTORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ID }}
+          APPSTORE_CONNECT_API_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_API_ISSUER_ID }}
+          APPSTORE_CONNECT_API_PRIVATE_KEY: ${{ secrets.APPSTORE_CONNECT_API_PRIVATE_KEY }}
+        run: |
+          API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPSTORE_CONNECT_API_KEY_ID}.p8"
+          echo "$APPSTORE_CONNECT_API_PRIVATE_KEY" > "$API_KEY_PATH"
+          xcrun notarytool submit "$PWD/build/QuickLookStep.zip" \
+            --key "$API_KEY_PATH" \
+            --key-id "$APPSTORE_CONNECT_API_KEY_ID" \
+            --issuer "$APPSTORE_CONNECT_API_ISSUER_ID" \
+            --wait
+
+      - name: Staple
+        if: github.event_name != 'pull_request'
+        run: |
+          APP_PATH="$PWD/build/QuickLookStep.xcarchive/Products/Applications/QuickLookStep.app"
+          xcrun stapler staple "$APP_PATH"
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuickLookStep
+          path: build/QuickLookStep.zip
