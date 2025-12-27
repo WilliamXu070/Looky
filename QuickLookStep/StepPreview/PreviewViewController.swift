@@ -22,6 +22,8 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         scnView.allowsCameraControl = true
         scnView.backgroundColor = .clear
         scnView.autoenablesDefaultLighting = true
+
+        addVersionWatermark()
     }
 
     /*
@@ -38,6 +40,27 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         // thumbnail use identical geometry, camera, and lighting.
         let scene = try SceneBuilder.scene(for: url)
         scnView.scene = scene
+    }
+
+    private func addVersionWatermark() {
+        let label = NSTextField(labelWithString: versionString())
+        label.font = NSFont.systemFont(ofSize: 10)
+        label.textColor = NSColor.labelColor.withAlphaComponent(0.2)
+        label.alignment = .right
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        view.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            label.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -4)
+        ])
+    }
+
+    private func versionString() -> String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "0"
+        let build = info?["CFBundleVersion"] as? String ?? "0"
+        return "QuickLookStep.app v\(version) (\(build))"
     }
 
 }
