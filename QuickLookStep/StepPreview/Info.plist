@@ -10,6 +10,10 @@
 			<false/>
 			<key>QLSupportedContentTypes</key>
 			<array>
+				<string>public.step</string>
+				<string>com.shapr3d.step</string>
+				<string>com.shapr3d.stp</string>
+				<string>a360.step</string>
 				<string>com.johnboiles.step</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
