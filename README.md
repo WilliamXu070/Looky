@@ -45,16 +45,27 @@ Open a Finder window and select a `.step` or `.stp` file. You should be able to 
 
 ## 🔫 Troubleshooting
 
-Mostly when I'm developing I sometimes get a stale version of the extension, or the extension doesn't load at all. When that happens I run this to do everything I know to do to clear the macOS cache.
+If you used older versions of `QuickLookStep.app` (especially <v1.5), make sure to delete them and to empty trash (`Finder` -> `Empty Trash...`). I've noticed macOS will sometimes try to use old extensions from the Trash! Then you should restart Finder:
+
+```sh
+killall Finder
+```
+
+If restarting Finder doesn't make it work, I run this to do everything I know to do to clear the macOS cache:
 
 ```sh
 pluginkit -r -u com.johnboiles.QuickLookStep.StepThumbnail
+pluginkit -r -u com.johnboiles.QuickLookStep.StepPreview
 pluginkit -a /Applications/QuickLookStep.app
 qlmanage -r
 qlmanage -r cache
+pluginkit -e use -i com.johnboiles.QuickLookStep.StepThumbnail
+pluginkit -e use -i com.johnboiles.QuickLookStep.StepPreview
 killall QuickLookUIService
 killall Finder
 ```
+
+And of course rebooting is also worth trying!
 
 ## 🤝 Contributing
 
