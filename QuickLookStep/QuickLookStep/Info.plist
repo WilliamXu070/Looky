@@ -6,19 +6,38 @@
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>STEP File</string>
+			<string>3D Model</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
-			<string>Alternate</string>
+			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.johnboiles.step</string>
+				<string>com.johnboiles.model3d</string>
+				<string>public.geometry-definition-format</string>
+				<string>public.standard-tesselated-geometry-format</string>
+				<string>org.khronos.gltf</string>
+				<string>org.khronos.glb</string>
 			</array>
 			<key>LSTypeIsPackage</key>
 			<false/>
 			<key>NSDocumentClass</key>
 			<string></string>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>3D Model</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.geometry-definition-format</string>
+				<string>public.standard-tesselated-geometry-format</string>
+			</array>
+			<key>LSTypeIsPackage</key>
+			<false/>
 		</dict>
 	</array>
 	<key>UTExportedTypeDeclarations</key>
@@ -29,21 +48,32 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>STEP File (ISO 10303-21)</string>
+			<string>3D Model (STEP/OBJ/STL/glTF/3MF)</string>
 			<key>UTTypeIcons</key>
 			<dict/>
 			<key>UTTypeIdentifier</key>
-			<string>com.johnboiles.step</string>
+			<string>com.johnboiles.model3d</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
 					<string>step</string>
 					<string>stp</string>
+					<string>gltf</string>
+					<string>glb</string>
+					<string>3mf</string>
+					<string>STEP</string>
+					<string>STP</string>
+					<string>GLTF</string>
+					<string>GLB</string>
+					<string>3MF</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>
 					<string>model/step</string>
+					<string>model/gltf+json</string>
+					<string>model/gltf-binary</string>
+					<string>model/3mf</string>
 				</array>
 			</dict>
 		</dict>
@@ -56,21 +86,68 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>STEP File (ISO 10303-21)</string>
+			<string>3D Model (STEP/OBJ/STL/glTF/3MF)</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.johnboiles.step</string>
+			<string>com.johnboiles.model3d</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
 					<string>step</string>
 					<string>stp</string>
+					<string>gltf</string>
+					<string>glb</string>
+					<string>3mf</string>
 					<string>STEP</string>
 					<string>STP</string>
+					<string>GLTF</string>
+					<string>GLB</string>
+					<string>3MF</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>
 					<string>model/step</string>
+					<string>model/gltf+json</string>
+					<string>model/gltf-binary</string>
+					<string>model/3mf</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.3d-content</string>
+				<string>public.text</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Wavefront OBJ Model</string>
+			<key>UTTypeIdentifier</key>
+			<string>public.geometry-definition-format</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>obj</string>
+					<string>OBJ</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.3d-content</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>STL Model</string>
+			<key>UTTypeIdentifier</key>
+			<string>public.standard-tesselated-geometry-format</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>stl</string>
+					<string>STL</string>
 				</array>
 			</dict>
 		</dict>

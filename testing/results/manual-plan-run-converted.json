@@ -1,0 +1,364 @@
+{
+  "durationMs" : 2569.2179203033447,
+  "planPath" : "testing\/plans\/multi-format-orientation-speed.json",
+  "reports" : [
+    {
+      "events" : [
+        {
+          "action" : "load",
+          "actionDurationMs" : 2.5560855865478516,
+          "actionIndex" : -1,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 0.006079673767089844,
+          "fieldOfView" : 45,
+          "file" : "testing\/input\/cube_hole.step",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            44.9999978371445,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "after-load",
+          "scenario" : "cube-hole-step",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-step\/testing_input_cube_hole.step--load---1--load.png"
+        },
+        {
+          "action" : "rotateY",
+          "actionDurationMs" : 136.8110179901123,
+          "actionIndex" : 0,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 180.1319122314453,
+          "fieldOfView" : 45,
+          "file" : "testing\/input\/cube_hole.step",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-step",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-step\/testing_input_cube_hole.step--post-action--0--rotateY.png"
+        },
+        {
+          "action" : "rotateX",
+          "actionDurationMs" : 133.3409547805786,
+          "actionIndex" : 1,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 313.4959936141968,
+          "fieldOfView" : 45,
+          "file" : "testing\/input\/cube_hole.step",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-step",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-step\/testing_input_cube_hole.step--post-action--1--rotateX.png"
+        },
+        {
+          "action" : "zoom",
+          "actionDurationMs" : 143.9439058303833,
+          "actionIndex" : 2,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 457.4739933013916,
+          "fieldOfView" : 37,
+          "file" : "testing\/input\/cube_hole.step",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-step",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-step\/testing_input_cube_hole.step--post-action--2--zoom.png"
+        },
+        {
+          "action" : "wait",
+          "actionDurationMs" : 178.73001098632812,
+          "actionIndex" : 3,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 636.2318992614746,
+          "fieldOfView" : 37,
+          "file" : "testing\/input\/cube_hole.step",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-step",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-step\/testing_input_cube_hole.step--post-action--3--wait.png"
+        }
+      ],
+      "file" : "testing\/input\/cube_hole.step",
+      "finishedAt" : "2026-06-04T20:12:54Z",
+      "loadSnapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-step\/testing_input_cube_hole.step--load---1--load.png",
+      "loadTimeMs" : 2.5560855865478516,
+      "scenario" : "cube-hole-step"
+    },
+    {
+      "events" : [
+        {
+          "action" : "load",
+          "actionDurationMs" : 15.096902847290039,
+          "actionIndex" : -1,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 0.0050067901611328125,
+          "fieldOfView" : 45,
+          "file" : "testing\/input\/cube_hole_from_step.obj",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            44.9999978371445,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "after-load",
+          "scenario" : "cube-hole-obj",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-obj\/testing_input_cube_hole_from_step.obj--load---1--load.png"
+        },
+        {
+          "action" : "rotateY",
+          "actionDurationMs" : 136.7349624633789,
+          "actionIndex" : 0,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 814.9399757385254,
+          "fieldOfView" : 45,
+          "file" : "testing\/input\/cube_hole_from_step.obj",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-obj",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-obj\/testing_input_cube_hole_from_step.obj--post-action--0--rotateY.png"
+        },
+        {
+          "action" : "rotateX",
+          "actionDurationMs" : 147.85492420196533,
+          "actionIndex" : 1,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 962.8399610519409,
+          "fieldOfView" : 45,
+          "file" : "testing\/input\/cube_hole_from_step.obj",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-obj",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-obj\/testing_input_cube_hole_from_step.obj--post-action--1--rotateX.png"
+        },
+        {
+          "action" : "zoom",
+          "actionDurationMs" : 150.22194385528564,
+          "actionIndex" : 2,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 1113.090991973877,
+          "fieldOfView" : 37,
+          "file" : "testing\/input\/cube_hole_from_step.obj",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-obj",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-obj\/testing_input_cube_hole_from_step.obj--post-action--2--zoom.png"
+        },
+        {
+          "action" : "wait",
+          "actionDurationMs" : 173.32196235656738,
+          "actionIndex" : 3,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 1286.4329814910889,
+          "fieldOfView" : 37,
+          "file" : "testing\/input\/cube_hole_from_step.obj",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-obj",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-obj\/testing_input_cube_hole_from_step.obj--post-action--3--wait.png"
+        }
+      ],
+      "file" : "testing\/input\/cube_hole_from_step.obj",
+      "finishedAt" : "2026-06-04T20:12:54Z",
+      "loadSnapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-obj\/testing_input_cube_hole_from_step.obj--load---1--load.png",
+      "loadTimeMs" : 15.096902847290039,
+      "scenario" : "cube-hole-obj"
+    },
+    {
+      "events" : [
+        {
+          "action" : "load",
+          "actionDurationMs" : 6.71696662902832,
+          "actionIndex" : -1,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 0.006079673767089844,
+          "fieldOfView" : 45,
+          "file" : "testing\/input\/cube_hole_from_step.stl",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            44.9999978371445,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "after-load",
+          "scenario" : "cube-hole-stl",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-stl\/testing_input_cube_hole_from_step.stl--load---1--load.png"
+        },
+        {
+          "action" : "rotateY",
+          "actionDurationMs" : 136.67809963226318,
+          "actionIndex" : 0,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 1463.379979133606,
+          "fieldOfView" : 45,
+          "file" : "testing\/input\/cube_hole_from_step.stl",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-stl",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-stl\/testing_input_cube_hole_from_step.stl--post-action--0--rotateY.png"
+        },
+        {
+          "action" : "rotateX",
+          "actionDurationMs" : 146.11399173736572,
+          "actionIndex" : 1,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 1609.5309257507324,
+          "fieldOfView" : 45,
+          "file" : "testing\/input\/cube_hole_from_step.stl",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-stl",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-stl\/testing_input_cube_hole_from_step.stl--post-action--1--rotateX.png"
+        },
+        {
+          "action" : "zoom",
+          "actionDurationMs" : 145.36702632904053,
+          "actionIndex" : 2,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 1754.9329996109009,
+          "fieldOfView" : 37,
+          "file" : "testing\/input\/cube_hole_from_step.stl",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-stl",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-stl\/testing_input_cube_hole_from_step.stl--post-action--2--zoom.png"
+        },
+        {
+          "action" : "wait",
+          "actionDurationMs" : 175.17495155334473,
+          "actionIndex" : 3,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 1930.1350116729736,
+          "fieldOfView" : 37,
+          "file" : "testing\/input\/cube_hole_from_step.stl",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "cube-hole-stl",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-stl\/testing_input_cube_hole_from_step.stl--post-action--3--wait.png"
+        }
+      ],
+      "file" : "testing\/input\/cube_hole_from_step.stl",
+      "finishedAt" : "2026-06-04T20:12:55Z",
+      "loadSnapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/cube-hole-stl\/testing_input_cube_hole_from_step.stl--load---1--load.png",
+      "loadTimeMs" : 6.71696662902832,
+      "scenario" : "cube-hole-stl"
+    }
+  ],
+  "startedAt" : "2026-06-04T20:12:53Z"
+}

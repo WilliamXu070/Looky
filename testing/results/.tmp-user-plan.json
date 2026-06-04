@@ -1,0 +1,14 @@
+{
+  "scenarios": [
+    {
+      "name": "thor-3mf-user",
+      "file": "/Users/williamxu/Downloads/thor luminos adaptor - Part 59.3mf",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 120 },
+        { "kind": "rotateX", "value": -20, "durationMs": 120 },
+        { "kind": "zoom", "value": -8, "durationMs": 120 },
+        { "kind": "wait", "durationMs": 150 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,662 @@
+{
+  "durationMs" : 5755.702018737793,
+  "planPath" : "testing\/plans\/user-thor-multiformat.json",
+  "reports" : [
+    {
+      "events" : [
+        {
+          "action" : "load",
+          "actionDurationMs" : 12.194991111755371,
+          "actionIndex" : -1,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 0.0040531158447265625,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor.step",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            44.9999978371445,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "after-load",
+          "scenario" : "thor-step",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-step\/_Users_williamxu_Downloads_thor_luminos_adaptor.step--load---1--load.png"
+        },
+        {
+          "action" : "rotateY",
+          "actionDurationMs" : 162.24992275238037,
+          "actionIndex" : 0,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 215.12603759765625,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor.step",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : 45,
+          "scenario" : "thor-step",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-step\/_Users_williamxu_Downloads_thor_luminos_adaptor.step--post-action--0--rotateY.png"
+        },
+        {
+          "action" : "rotateX",
+          "actionDurationMs" : 163.36297988891602,
+          "actionIndex" : 1,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 378.5029649734497,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor.step",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : -20,
+          "scenario" : "thor-step",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-step\/_Users_williamxu_Downloads_thor_luminos_adaptor.step--post-action--1--rotateX.png"
+        },
+        {
+          "action" : "zoom",
+          "actionDurationMs" : 170.9589958190918,
+          "actionIndex" : 2,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 549.481987953186,
+          "fieldOfView" : 33,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor.step",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : -12,
+          "scenario" : "thor-step",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-step\/_Users_williamxu_Downloads_thor_luminos_adaptor.step--post-action--2--zoom.png"
+        },
+        {
+          "action" : "wait",
+          "actionDurationMs" : 274.8340368270874,
+          "actionIndex" : 3,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 824.3299722671509,
+          "fieldOfView" : 33,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor.step",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 250,
+          "scenario" : "thor-step",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-step\/_Users_williamxu_Downloads_thor_luminos_adaptor.step--post-action--3--wait.png"
+        }
+      ],
+      "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor.step",
+      "finishedAt" : "2026-06-04T21:52:42Z",
+      "loadSnapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-step\/_Users_williamxu_Downloads_thor_luminos_adaptor.step--load---1--load.png",
+      "loadTimeMs" : 12.194991111755371,
+      "loaderMetadata" : {
+
+      },
+      "loaderMethod" : "step-native",
+      "scenario" : "thor-step"
+    },
+    {
+      "events" : [
+        {
+          "action" : "load",
+          "actionDurationMs" : 17.67098903656006,
+          "actionIndex" : -1,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 0.0029802322387695312,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59\/thor luminos adaptor - Part 59.obj",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            44.9999978371445,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "after-load",
+          "scenario" : "thor-obj",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-obj\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59_thor_luminos_adaptor_-_Part_59.obj--load---1--load.png"
+        },
+        {
+          "action" : "rotateY",
+          "actionDurationMs" : 175.04799365997314,
+          "actionIndex" : 0,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 1045.2840328216553,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59\/thor luminos adaptor - Part 59.obj",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : 45,
+          "scenario" : "thor-obj",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-obj\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59_thor_luminos_adaptor_-_Part_59.obj--post-action--0--rotateY.png"
+        },
+        {
+          "action" : "rotateX",
+          "actionDurationMs" : 163.83600234985352,
+          "actionIndex" : 1,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 1209.1410160064697,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59\/thor luminos adaptor - Part 59.obj",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : -20,
+          "scenario" : "thor-obj",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-obj\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59_thor_luminos_adaptor_-_Part_59.obj--post-action--1--rotateX.png"
+        },
+        {
+          "action" : "zoom",
+          "actionDurationMs" : 172.0900535583496,
+          "actionIndex" : 2,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 1381.255030632019,
+          "fieldOfView" : 33,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59\/thor luminos adaptor - Part 59.obj",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : -12,
+          "scenario" : "thor-obj",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-obj\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59_thor_luminos_adaptor_-_Part_59.obj--post-action--2--zoom.png"
+        },
+        {
+          "action" : "wait",
+          "actionDurationMs" : 262.814998626709,
+          "actionIndex" : 3,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 1644.0930366516113,
+          "fieldOfView" : 33,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59\/thor luminos adaptor - Part 59.obj",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 250,
+          "scenario" : "thor-obj",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-obj\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59_thor_luminos_adaptor_-_Part_59.obj--post-action--3--wait.png"
+        }
+      ],
+      "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59\/thor luminos adaptor - Part 59.obj",
+      "finishedAt" : "2026-06-04T21:52:43Z",
+      "loadSnapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-obj\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59_thor_luminos_adaptor_-_Part_59.obj--load---1--load.png",
+      "loadTimeMs" : 17.67098903656006,
+      "loaderMetadata" : {
+
+      },
+      "loaderMethod" : "scenekit",
+      "scenario" : "thor-obj"
+    },
+    {
+      "events" : [
+        {
+          "action" : "load",
+          "actionDurationMs" : 1.6900300979614258,
+          "actionIndex" : -1,
+          "cameraPosition" : [
+            164.844482421875,
+            164.844482421875,
+            164.844482421875
+          ],
+          "distanceFromOrigin" : 285.51901890208217,
+          "elapsedMs" : 0.0050067901611328125,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.stl",
+          "orientationDegrees" : [
+            -35.26438621308631,
+            45.00000466733367,
+            4.796523576023514e-06
+          ],
+          "phase" : "after-load",
+          "scenario" : "thor-stl",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-stl\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.stl--load---1--load.png"
+        },
+        {
+          "action" : "rotateY",
+          "actionDurationMs" : 170.3500747680664,
+          "actionIndex" : 0,
+          "cameraPosition" : [
+            164.844482421875,
+            164.844482421875,
+            164.844482421875
+          ],
+          "distanceFromOrigin" : 285.51901890208217,
+          "elapsedMs" : 1842.6650762557983,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.stl",
+          "orientationDegrees" : [
+            -35.26438621308631,
+            90.00000250447816,
+            4.796523576023514e-06
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : 45,
+          "scenario" : "thor-stl",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-stl\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.stl--post-action--0--rotateY.png"
+        },
+        {
+          "action" : "rotateX",
+          "actionDurationMs" : 172.07300662994385,
+          "actionIndex" : 1,
+          "cameraPosition" : [
+            164.844482421875,
+            164.844482421875,
+            164.844482421875
+          ],
+          "distanceFromOrigin" : 285.51901890208217,
+          "elapsedMs" : 2014.7570371627808,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.stl",
+          "orientationDegrees" : [
+            -55.26438563127215,
+            90.00000250447816,
+            4.796523576023514e-06
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : -20,
+          "scenario" : "thor-stl",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-stl\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.stl--post-action--1--rotateX.png"
+        },
+        {
+          "action" : "zoom",
+          "actionDurationMs" : 168.47896575927734,
+          "actionIndex" : 2,
+          "cameraPosition" : [
+            164.844482421875,
+            164.844482421875,
+            164.844482421875
+          ],
+          "distanceFromOrigin" : 285.51901890208217,
+          "elapsedMs" : 2183.251976966858,
+          "fieldOfView" : 33,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.stl",
+          "orientationDegrees" : [
+            -55.26438563127215,
+            90.00000250447816,
+            4.796523576023514e-06
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : -12,
+          "scenario" : "thor-stl",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-stl\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.stl--post-action--2--zoom.png"
+        },
+        {
+          "action" : "wait",
+          "actionDurationMs" : 264.9970054626465,
+          "actionIndex" : 3,
+          "cameraPosition" : [
+            164.844482421875,
+            164.844482421875,
+            164.844482421875
+          ],
+          "distanceFromOrigin" : 285.51901890208217,
+          "elapsedMs" : 2448.264002799988,
+          "fieldOfView" : 33,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.stl",
+          "orientationDegrees" : [
+            -55.26438563127215,
+            90.00000250447816,
+            4.796523576023514e-06
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 250,
+          "scenario" : "thor-stl",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-stl\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.stl--post-action--3--wait.png"
+        }
+      ],
+      "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.stl",
+      "finishedAt" : "2026-06-04T21:52:44Z",
+      "loadSnapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-stl\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.stl--load---1--load.png",
+      "loadTimeMs" : 1.6900300979614258,
+      "loaderMetadata" : {
+
+      },
+      "loaderMethod" : "scenekit",
+      "scenario" : "thor-stl"
+    },
+    {
+      "events" : [
+        {
+          "action" : "load",
+          "actionDurationMs" : 107.69999027252197,
+          "actionIndex" : -1,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 0.0050067901611328125,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.3mf",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            44.9999978371445,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "after-load",
+          "scenario" : "thor-3mf",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-3mf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.3mf--load---1--load.png"
+        },
+        {
+          "action" : "rotateY",
+          "actionDurationMs" : 159.35194492340088,
+          "actionIndex" : 0,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 2740.9859895706177,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.3mf",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : 45,
+          "scenario" : "thor-3mf",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-3mf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.3mf--post-action--0--rotateY.png"
+        },
+        {
+          "action" : "rotateX",
+          "actionDurationMs" : 170.20690441131592,
+          "actionIndex" : 1,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 2911.210060119629,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.3mf",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : -20,
+          "scenario" : "thor-3mf",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-3mf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.3mf--post-action--1--rotateX.png"
+        },
+        {
+          "action" : "zoom",
+          "actionDurationMs" : 172.9910373687744,
+          "actionIndex" : 2,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 3084.223985671997,
+          "fieldOfView" : 33,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.3mf",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : -12,
+          "scenario" : "thor-3mf",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-3mf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.3mf--post-action--2--zoom.png"
+        },
+        {
+          "action" : "wait",
+          "actionDurationMs" : 278.9880037307739,
+          "actionIndex" : 3,
+          "cameraPosition" : [
+            164.84449768066406,
+            164.84449768066406,
+            164.84449768066406
+          ],
+          "distanceFromOrigin" : 285.5190453310801,
+          "elapsedMs" : 3363.229990005493,
+          "fieldOfView" : 33,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.3mf",
+          "orientationDegrees" : [
+            -55.264402706745074,
+            89.999995674289,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 250,
+          "scenario" : "thor-3mf",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-3mf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.3mf--post-action--3--wait.png"
+        }
+      ],
+      "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.3mf",
+      "finishedAt" : "2026-06-04T21:52:44Z",
+      "loadSnapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-3mf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.3mf--load---1--load.png",
+      "loadTimeMs" : 107.69999027252197,
+      "loaderMetadata" : {
+        "colorCount" : "1",
+        "format" : "3mf",
+        "normalMode" : "flat-face",
+        "objectCount" : "1",
+        "triangleCount" : "2072",
+        "vertexCount" : "1026"
+      },
+      "loaderMethod" : "three-mf-native",
+      "scenario" : "thor-3mf"
+    },
+    {
+      "events" : [
+        {
+          "action" : "load",
+          "actionDurationMs" : 1598.8130569458008,
+          "actionIndex" : -1,
+          "cameraPosition" : [
+            164.844482421875,
+            164.844482421875,
+            164.844482421875
+          ],
+          "distanceFromOrigin" : 285.51901890208217,
+          "elapsedMs" : 0.0029802322387695312,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.gltf",
+          "orientationDegrees" : [
+            -35.26438621308631,
+            45.00000466733367,
+            4.796523576023514e-06
+          ],
+          "phase" : "after-load",
+          "scenario" : "thor-gltf",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-gltf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.gltf--load---1--load.png"
+        },
+        {
+          "action" : "rotateY",
+          "actionDurationMs" : 164.11101818084717,
+          "actionIndex" : 0,
+          "cameraPosition" : [
+            164.844482421875,
+            164.844482421875,
+            164.844482421875
+          ],
+          "distanceFromOrigin" : 285.51901890208217,
+          "elapsedMs" : 5153.043985366821,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.gltf",
+          "orientationDegrees" : [
+            -35.26438621308631,
+            90.00000250447816,
+            4.796523576023514e-06
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : 45,
+          "scenario" : "thor-gltf",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-gltf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.gltf--post-action--0--rotateY.png"
+        },
+        {
+          "action" : "rotateX",
+          "actionDurationMs" : 168.73705387115479,
+          "actionIndex" : 1,
+          "cameraPosition" : [
+            164.844482421875,
+            164.844482421875,
+            164.844482421875
+          ],
+          "distanceFromOrigin" : 285.51901890208217,
+          "elapsedMs" : 5321.794033050537,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.gltf",
+          "orientationDegrees" : [
+            -55.26438563127215,
+            90.00000250447816,
+            4.796523576023514e-06
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : -20,
+          "scenario" : "thor-gltf",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-gltf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.gltf--post-action--1--rotateX.png"
+        },
+        {
+          "action" : "zoom",
+          "actionDurationMs" : 167.67394542694092,
+          "actionIndex" : 2,
+          "cameraPosition" : [
+            164.844482421875,
+            164.844482421875,
+            164.844482421875
+          ],
+          "distanceFromOrigin" : 285.51901890208217,
+          "elapsedMs" : 5489.480972290039,
+          "fieldOfView" : 33,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.gltf",
+          "orientationDegrees" : [
+            -55.26438563127215,
+            90.00000250447816,
+            4.796523576023514e-06
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 150,
+          "requestedValue" : -12,
+          "scenario" : "thor-gltf",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-gltf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.gltf--post-action--2--zoom.png"
+        },
+        {
+          "action" : "wait",
+          "actionDurationMs" : 266.1780118942261,
+          "actionIndex" : 3,
+          "cameraPosition" : [
+            164.844482421875,
+            164.844482421875,
+            164.844482421875
+          ],
+          "distanceFromOrigin" : 285.51901890208217,
+          "elapsedMs" : 5755.673050880432,
+          "fieldOfView" : 33,
+          "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.gltf",
+          "orientationDegrees" : [
+            -55.26438563127215,
+            90.00000250447816,
+            4.796523576023514e-06
+          ],
+          "phase" : "post-action",
+          "requestedDurationMs" : 250,
+          "scenario" : "thor-gltf",
+          "snapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-gltf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.gltf--post-action--3--wait.png"
+        }
+      ],
+      "file" : "\/Users\/williamxu\/Downloads\/thor luminos adaptor - Part 59.gltf",
+      "finishedAt" : "2026-06-04T21:52:47Z",
+      "loadSnapshotPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/results\/screenshots\/thor-gltf\/_Users_williamxu_Downloads_thor_luminos_adaptor_-_Part_59.gltf--load---1--load.png",
+      "loadTimeMs" : 1598.8130569458008,
+      "loaderMetadata" : {
+
+      },
+      "loaderMethod" : "mesh-conversion",
+      "scenario" : "thor-gltf"
+    }
+  ],
+  "startedAt" : "2026-06-04T21:52:41Z"
+}

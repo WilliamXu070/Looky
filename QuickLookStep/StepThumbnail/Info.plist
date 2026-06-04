@@ -8,11 +8,27 @@
 		<dict>
 			<key>QLSupportedContentTypes</key>
 			<array>
+				<string>com.johnboiles.model3d</string>
 				<string>public.step</string>
 				<string>com.shapr3d.step</string>
 				<string>com.shapr3d.stp</string>
 				<string>a360.step</string>
 				<string>com.johnboiles.step</string>
+				<string>public.object</string>
+				<string>public.geometry-definition-format</string>
+				<string>public.standard-tesselated-geometry-format</string>
+				<string>org.khronos.gltf</string>
+				<string>org.khronos.glb</string>
+				<string>model/gltf+json</string>
+				<string>model/gltf-binary</string>
+				<string>model/obj</string>
+				<string>model/stl</string>
+				<string>model/3mf</string>
+				<string>gltf</string>
+				<string>glb</string>
+				<string>obj</string>
+				<string>stl</string>
+				<string>3mf</string>
 			</array>
 			<key>QLThumbnailMinimumDimension</key>
 			<integer>0</integer>

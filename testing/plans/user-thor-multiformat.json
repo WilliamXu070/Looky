@@ -1,0 +1,54 @@
+{
+  "scenarios": [
+    {
+      "name": "thor-step",
+      "file": "/Users/williamxu/Downloads/thor luminos adaptor.step",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 150 },
+        { "kind": "rotateX", "value": -20, "durationMs": 150 },
+        { "kind": "zoom", "value": -12, "durationMs": 150 },
+        { "kind": "wait", "durationMs": 250 }
+      ]
+    },
+    {
+      "name": "thor-obj",
+      "file": "/Users/williamxu/Downloads/thor luminos adaptor - Part 59/thor luminos adaptor - Part 59.obj",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 150 },
+        { "kind": "rotateX", "value": -20, "durationMs": 150 },
+        { "kind": "zoom", "value": -12, "durationMs": 150 },
+        { "kind": "wait", "durationMs": 250 }
+      ]
+    },
+    {
+      "name": "thor-stl",
+      "file": "/Users/williamxu/Downloads/thor luminos adaptor - Part 59.stl",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 150 },
+        { "kind": "rotateX", "value": -20, "durationMs": 150 },
+        { "kind": "zoom", "value": -12, "durationMs": 150 },
+        { "kind": "wait", "durationMs": 250 }
+      ]
+    },
+    {
+      "name": "thor-3mf",
+      "file": "/Users/williamxu/Downloads/thor luminos adaptor - Part 59.3mf",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 150 },
+        { "kind": "rotateX", "value": -20, "durationMs": 150 },
+        { "kind": "zoom", "value": -12, "durationMs": 150 },
+        { "kind": "wait", "durationMs": 250 }
+      ]
+    },
+    {
+      "name": "thor-gltf",
+      "file": "/Users/williamxu/Downloads/thor luminos adaptor - Part 59.gltf",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 150 },
+        { "kind": "rotateX", "value": -20, "durationMs": 150 },
+        { "kind": "zoom", "value": -12, "durationMs": 150 },
+        { "kind": "wait", "durationMs": 250 }
+      ]
+    }
+  ]
+}

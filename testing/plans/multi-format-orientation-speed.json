@@ -1,0 +1,64 @@
+{
+  "scenarios": [
+    {
+      "name": "cube-hole-step",
+      "file": "testing/input/cube_hole.step",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 120 },
+        { "kind": "rotateX", "value": -20, "durationMs": 120 },
+        { "kind": "zoom", "value": -8, "durationMs": 120 },
+        { "kind": "wait", "durationMs": 150 }
+      ]
+    },
+    {
+      "name": "cube-hole-obj",
+      "file": "testing/input/cube_hole_from_step.obj",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 120 },
+        { "kind": "rotateX", "value": -20, "durationMs": 120 },
+        { "kind": "zoom", "value": -8, "durationMs": 120 },
+        { "kind": "wait", "durationMs": 150 }
+      ]
+    },
+    {
+      "name": "cube-hole-stl",
+      "file": "testing/input/cube_hole_from_step.stl",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 120 },
+        { "kind": "rotateX", "value": -20, "durationMs": 120 },
+        { "kind": "zoom", "value": -8, "durationMs": 120 },
+        { "kind": "wait", "durationMs": 150 }
+      ]
+    },
+    {
+      "name": "cube-hole-gltf",
+      "file": "testing/input/cube_hole_from_step.gltf",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 120 },
+        { "kind": "rotateX", "value": -20, "durationMs": 120 },
+        { "kind": "zoom", "value": -8, "durationMs": 120 },
+        { "kind": "wait", "durationMs": 150 }
+      ]
+    },
+    {
+      "name": "cube-hole-glb",
+      "file": "testing/input/cube_hole_from_step.glb",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 120 },
+        { "kind": "rotateX", "value": -20, "durationMs": 120 },
+        { "kind": "zoom", "value": -8, "durationMs": 120 },
+        { "kind": "wait", "durationMs": 150 }
+      ]
+    },
+    {
+      "name": "cube-hole-3mf",
+      "file": "testing/input/cube_hole_from_step.3mf",
+      "actions": [
+        { "kind": "rotateY", "value": 45, "durationMs": 120 },
+        { "kind": "rotateX", "value": -20, "durationMs": 120 },
+        { "kind": "zoom", "value": -8, "durationMs": 120 },
+        { "kind": "wait", "durationMs": 150 }
+      ]
+    }
+  ]
+}

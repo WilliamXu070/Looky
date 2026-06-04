@@ -1,0 +1,120 @@
+{
+  "durationMs" : 624.2759227752686,
+  "planPath" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/plans\/.sample-run.XXXXXX.json",
+  "reports" : [
+    {
+      "events" : [
+        {
+          "action" : "load",
+          "actionDurationMs" : 4.914045333862305,
+          "actionIndex" : -1,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 4.9179792404174805,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/input\/cube_hole.step",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            44.9999978371445,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "after-load",
+          "scenario" : "sample-quickrun"
+        },
+        {
+          "action" : "rotateY",
+          "actionDurationMs" : 149.42288398742676,
+          "actionIndex" : 0,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 154.44791316986084,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/input\/cube_hole.step",
+          "orientationDegrees" : [
+            -35.26440328855924,
+            59.99999483946294,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "sample-quickrun"
+        },
+        {
+          "action" : "rotateX",
+          "actionDurationMs" : 128.0820369720459,
+          "actionIndex" : 1,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 282.5409173965454,
+          "fieldOfView" : 45,
+          "file" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/input\/cube_hole.step",
+          "orientationDegrees" : [
+            -45.264404705199446,
+            59.99999483946294,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "sample-quickrun"
+        },
+        {
+          "action" : "zoom",
+          "actionDurationMs" : 128.1149387359619,
+          "actionIndex" : 2,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 410.6689691543579,
+          "fieldOfView" : 39,
+          "file" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/input\/cube_hole.step",
+          "orientationDegrees" : [
+            -45.264404705199446,
+            59.99999483946294,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "sample-quickrun"
+        },
+        {
+          "action" : "wait",
+          "actionDurationMs" : 213.4850025177002,
+          "actionIndex" : 3,
+          "cameraPosition" : [
+            147.8397674560547,
+            147.8397674560547,
+            147.8397674560547
+          ],
+          "distanceFromOrigin" : 256.06598861305457,
+          "elapsedMs" : 624.1849660873413,
+          "fieldOfView" : 39,
+          "file" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/input\/cube_hole.step",
+          "orientationDegrees" : [
+            -45.264404705199446,
+            59.99999483946294,
+            -1.3215309125452213e-05
+          ],
+          "phase" : "post-action",
+          "scenario" : "sample-quickrun"
+        }
+      ],
+      "file" : "\/Users\/williamxu\/Desktop\/Projects\/quicklook\/testing\/input\/cube_hole.step",
+      "finishedAt" : "2026-06-04T19:43:40Z",
+      "loadTimeMs" : 4.914045333862305,
+      "scenario" : "sample-quickrun"
+    }
+  ],
+  "startedAt" : "2026-06-04T19:43:39Z"
+}
