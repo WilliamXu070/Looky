@@ -518,12 +518,8 @@ enum SceneBuilder {
             dataStride: 3 * MemoryLayout<Float>.size
         )
 
-        let indexData = Data(
-            bytes: indexPointer,
-            count: indexCount * MemoryLayout<UInt32>.size
-        )
         let geometryElement = SCNGeometryElement(
-            data: indexData,
+            data: Data(bytes: indexPointer, count: indexCount * MemoryLayout<UInt32>.size),
             primitiveType: .triangles,
             primitiveCount: Int(mesh.tri_count),
             bytesPerIndex: MemoryLayout<UInt32>.size

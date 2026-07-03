@@ -112,15 +112,52 @@ enum ThreeMFImporter {
         _ object: ObjectMesh,
         colors: [String: [NSColor]]
     ) throws -> SCNNode {
-        var expandedVertices: [SIMD3<Float>] = []
-        var expandedNormals: [SIMD3<Float>] = []
-        var expandedColors: [SIMD4<Float>] = []
+        struct QuantizedVertex: Hashable {
+            let x: Int32
+            let y: Int32
+            let z: Int32
+        }
+
+        func quantizedKey(_ value: SIMD3<Float>, scale: Float) -> QuantizedVertex {
+            let step = scale
+            return QuantizedVertex(
+                x: Int32((value.x * step).rounded()),
+                y: Int32((value.y * step).rounded()),
+                z: Int32((value.z * step).rounded())
+            )
+        }
+
+        let vertexQuantizationScale: Float = 1_000_000
+        var vertexCache: [QuantizedVertex: Int] = [:]
+        var uniqueVertices: [SIMD3<Float>] = []
+        var vertexNormalSums: [SIMD3<Float>] = []
+        var vertexColorSums: [SIMD4<Float>] = []
+        var vertexColorCounts: [Int] = []
         var indices: [UInt32] = []
 
-        expandedVertices.reserveCapacity(object.triangles.count * 3)
-        expandedNormals.reserveCapacity(object.triangles.count * 3)
-        expandedColors.reserveCapacity(object.triangles.count * 3)
+        uniqueVertices.reserveCapacity(object.triangles.count * 3)
+        vertexNormalSums.reserveCapacity(object.triangles.count * 3)
+        vertexColorSums.reserveCapacity(object.triangles.count * 3)
+        vertexColorCounts.reserveCapacity(object.triangles.count * 3)
         indices.reserveCapacity(object.triangles.count * 3)
+
+        func internVertex(_ position: SIMD3<Float>, normal: SIMD3<Float>, color: SIMD4<Float>) -> Int {
+            let key = quantizedKey(position, scale: vertexQuantizationScale)
+            if let existing = vertexCache[key] {
+                vertexNormalSums[existing] += normal
+                vertexColorSums[existing] += color
+                vertexColorCounts[existing] += 1
+                return existing
+            }
+
+            let index = uniqueVertices.count
+            vertexCache[key] = index
+            uniqueVertices.append(position)
+            vertexNormalSums.append(normal)
+            vertexColorSums.append(color)
+            vertexColorCounts.append(1)
+            return index
+        }
 
         for triangle in object.triangles {
             guard
@@ -135,30 +172,37 @@ enum ThreeMFImporter {
             let v2 = object.vertices[triangle.v2]
             let v3 = object.vertices[triangle.v3]
             let normal = flatNormal(v1, v2, v3)
-            let baseIndex = UInt32(expandedVertices.count)
-
-            expandedVertices.append(contentsOf: [v1, v2, v3])
-            expandedNormals.append(contentsOf: [normal, normal, normal])
 
             let firstColorRef: Int? = triangle.p1 ?? triangle.p2 ?? triangle.p3 ?? object.pindex
             let secondColorRef: Int? = triangle.p2 ?? triangle.p1 ?? triangle.p3 ?? object.pindex
             let thirdColorRef: Int? = triangle.p3 ?? triangle.p1 ?? triangle.p2 ?? object.pindex
             let colorRefs: [Int?] = [firstColorRef, secondColorRef, thirdColorRef]
             let colorGroup = triangle.pid ?? object.pid
-            for ref in colorRefs {
-                expandedColors.append(colorVector(colorGroup: colorGroup, colorIndex: ref, colors: colors))
-            }
 
-            indices.append(contentsOf: [baseIndex, baseIndex + 1, baseIndex + 2])
+            let colorVertices = colorRefs.map { colorVector(colorGroup: colorGroup, colorIndex: $0, colors: colors) }
+            let i0 = internVertex(v1, normal: normal, color: colorVertices[0])
+            let i1 = internVertex(v2, normal: normal, color: colorVertices[1])
+            let i2 = internVertex(v3, normal: normal, color: colorVertices[2])
+
+            indices.append(contentsOf: [UInt32(i0), UInt32(i1), UInt32(i2)])
         }
 
-        guard !expandedVertices.isEmpty else {
+        guard !uniqueVertices.isEmpty else {
             throw ImportError.emptyMesh
+        }
+
+        let expandedNormals = vertexNormalSums.enumerated().map { _, sum in
+            Self.normalizedOrFallback(sum, fallback: SIMD3<Float>(0, 1, 0))
+        }
+        let expandedColors = zip(vertexColorSums, vertexColorCounts).map { colorSum, count in
+            guard count > 0 else { return SIMD4<Float>(0.615, 0.812, 0.929, 1.0) }
+            let divisor = Float(max(count, 1))
+            return colorSum / divisor
         }
 
         let geometry = SCNGeometry(
             sources: [
-                geometrySource(expandedVertices, semantic: .vertex, components: 3),
+                geometrySource(uniqueVertices, semantic: .vertex, components: 3),
                 geometrySource(expandedNormals, semantic: .normal, components: 3),
                 geometrySource(expandedColors, semantic: .color, components: 4),
             ],
@@ -184,6 +228,14 @@ enum ThreeMFImporter {
         let node = SCNNode(geometry: geometry)
         node.name = object.name ?? "3mf-object-\(object.id)"
         return node
+    }
+
+    private static func normalizedOrFallback(_ vector: SIMD3<Float>, fallback: SIMD3<Float>) -> SIMD3<Float> {
+        let length = simd_length(vector)
+        guard length.isFinite, length > 0 else {
+            return fallback
+        }
+        return vector / length
     }
 
     private static func flatNormal(_ v1: SIMD3<Float>, _ v2: SIMD3<Float>, _ v3: SIMD3<Float>) -> SIMD3<Float> {

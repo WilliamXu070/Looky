@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {
+      "name": "thor-connected-edge-952-953-curved-region",
+      "source": "testing/edge-shape-detection/polygons/saved/thor-connected-edge-semicircle.json",
+      "expectedShape": "semicircle",
+      "expectedRawOrderShape": "fragmented",
+      "notes": "This is the saved connected-edge artifact that proved current-order chainPoints are not path ordered. The shape detector may reorder/interpret the existing points, but upstream click and edge detection must remain untouched."
+    }
+  ]
+}

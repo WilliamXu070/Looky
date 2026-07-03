@@ -79,7 +79,7 @@ launch() {
 
   if [[ -d "${APP_BUNDLE}" && -n "${APP_BUNDLE}" && -x /usr/bin/open ]]; then
     OPEN_LAUNCHED_WITH_OPEN=1
-    if ! open "$APP_BUNDLE" --args "${APP_ARGS[@]}" >/tmp/quicklookstep-open.log 2>&1; then
+    if ! open -n "$APP_BUNDLE" --args "${APP_ARGS[@]}" >/tmp/quicklookstep-open.log 2>&1; then
       echo "open failed. This often means no active GUI session is available."
       if grep -q "NoExecutable" /tmp/quicklookstep-open.log; then
         echo "LaunchServices reports the app bundle executable is missing."
