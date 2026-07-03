@@ -327,3 +327,23 @@ testing/scripts/verify_quicklook_ui_launch.sh
 - `QLS_SELECTION_METAL_MIN_SEGMENTS=1 QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 QLS_SELECTION_DEBUG_OUTPUT=/tmp/quicklook-selection-debug-gpu-metal testing/scripts/run-testing.sh testing/plans/selection-debug-cube-hole.json testing/results/selection-debug-gpu-metal.json`
 - `QLS_SELECTION_METAL_MIN_SEGMENTS=1 QLS_DISABLE_SELECTION_METAL=1 QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 QLS_SELECTION_DEBUG_OUTPUT=/tmp/quicklook-selection-debug-gpu-unavailable testing/scripts/run-testing.sh testing/plans/selection-debug-cube-hole.json testing/results/selection-debug-gpu-unavailable.json`
 - Existing gates still apply: surface layer test, selection-engine replay, edge-shape loop, and the selection-debug cube-hole golden flow.
+
+## 2026-07-03 Update
+
+### Problem context
+- Users needed a live, user-facing measurement panel after edge/surface selection, plus deterministic coverage for single edge, Shift multi-edge, surface replacement, blank clearing, and unit calibration behavior.
+
+### What changed
+- Added the measurement viewer triage workflow: normal click replaces selection, Shift-click adds an edge, Command-click toggles an edge, surface clicks replace all edges, and blank clicks clear unless Shift/Command is held.
+- Measurement goldens should use `testing/plans/measurement-viewer-cube-hole.json`; reset units inside the plan because `quicklook.measurement.unit` and `quicklook.measurement.mmPerModelUnit` are persisted with app defaults.
+- Automated plans can assert `measurementExpect`, and `run-testing.sh` fails on `measurementExpectationFailures`.
+
+### Why it helped
+- Separates user-facing measurements from debug telemetry while still keeping replayable JSON evidence for selected kind, entity count, raw model-unit length/area/perimeter, and unit mode.
+- Prevents false confidence from screenshots alone by checking the measurement reducer state directly after each click.
+
+### Validation
+- `swift testing/selection-engine/scripts/check_selection_measurements.swift`
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/measurement-viewer-cube-hole.json testing/results/measurement-viewer-cube-hole.json`
+- `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app /Users/williamxu/Desktop/Projects/quicklook/testing/input/cube_hole.step /tmp/quicklook-ui-launch-measurement.png`

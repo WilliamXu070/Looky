@@ -1,0 +1,105 @@
+{
+  "scenarios": [
+    {
+      "name": "measurement-viewer-cube-hole",
+      "file": "testing/input/cube_hole.step",
+      "actions": [
+        {
+          "kind": "setMeasurementUnit",
+          "unit": "model",
+          "mmPerModelUnit": 1.0,
+          "durationMs": 40,
+          "measurementExpect": {
+            "kind": "empty",
+            "entityCount": 0,
+            "unitMode": "model"
+          }
+        },
+        {
+          "kind": "selectAt",
+          "x": 0.5,
+          "y": 0.5,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "edge"
+          },
+          "measurementExpect": {
+            "kind": "edge",
+            "entityCount": 1,
+            "minTotalLength": 99.0,
+            "maxTotalLength": 101.0,
+            "unitMode": "model"
+          },
+          "durationMs": 100
+        },
+        {
+          "kind": "selectAt",
+          "x": 0.55,
+          "y": 0.45,
+          "coordinateSpace": "normalizedViewport",
+          "modifiers": ["shift"],
+          "expect": {
+            "kind": "edge"
+          },
+          "measurementExpect": {
+            "kind": "multiEdge",
+            "entityCount": 2,
+            "minTotalLength": 151.0,
+            "maxTotalLength": 153.0,
+            "unitMode": "model"
+          },
+          "durationMs": 100
+        },
+        {
+          "kind": "setMeasurementUnit",
+          "unit": "mm",
+          "mmPerModelUnit": 2.0,
+          "durationMs": 40,
+          "measurementExpect": {
+            "kind": "multiEdge",
+            "entityCount": 2,
+            "minTotalLength": 151.0,
+            "maxTotalLength": 153.0,
+            "unitMode": "mm"
+          }
+        },
+        {
+          "kind": "selectAt",
+          "x": 0.43,
+          "y": 0.5,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "surface",
+            "minSurfaceTriangleCount": 120,
+            "maxSurfaceTriangleCount": 130
+          },
+          "measurementExpect": {
+            "kind": "surface",
+            "entityCount": 1,
+            "minArea": 3900.0,
+            "maxArea": 4000.0,
+            "minPerimeter": 150.0,
+            "maxPerimeter": 165.0,
+            "unitMode": "mm"
+          },
+          "durationMs": 100
+        },
+        {
+          "kind": "selectAt",
+          "x": 0.05,
+          "y": 0.05,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "none"
+          },
+          "measurementExpect": {
+            "kind": "empty",
+            "entityCount": 0,
+            "unitMode": "mm"
+          },
+          "durationMs": 60
+        }
+      ]
+    }
+  ]
+}

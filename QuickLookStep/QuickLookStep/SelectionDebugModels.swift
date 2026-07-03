@@ -20,6 +20,7 @@ struct SelectionDebugSelectAtRequest {
     let y: Double
     let coordinateSpace: SelectionDebugCoordinateSpace
     let expectation: SelectionDebugExpectation?
+    let modifiers: [String]?
 }
 
 final class SelectionDebugActionDispatcher {

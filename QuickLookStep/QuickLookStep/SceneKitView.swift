@@ -41,6 +41,7 @@ struct SceneKitView: NSViewRepresentable {
     var selectionDebugOutputDirectory: String = "/tmp/quicklook-selection-debug"
     var loaderMetadata: [String: String] = [:]
     var onSelectionDebugEvent: ((SelectionDebugEvent) -> Void)?
+    var onMeasurementStateChanged: ((SelectionMeasurementState) -> Void)?
     var manualSelectionEnabled: Bool = true
 
     func makeNSView(context: Context) -> SCNView {
@@ -60,6 +61,7 @@ struct SceneKitView: NSViewRepresentable {
         scnView.selectionDebugOutputDirectory = selectionDebugOutputDirectory
         scnView.loaderMetadata = loaderMetadata
         scnView.onSelectionDebugEvent = onSelectionDebugEvent
+        scnView.onMeasurementStateChanged = onMeasurementStateChanged
         scnView.manualSelectionEnabled = manualSelectionEnabled
         SelectionDebugActionDispatcher.shared.performSelectAt = { [weak scnView] request in
             scnView?.performDebugSelectAt(request)
@@ -108,6 +110,7 @@ struct SceneKitView: NSViewRepresentable {
             selectableView.selectionDebugOutputDirectory = selectionDebugOutputDirectory
             selectableView.loaderMetadata = loaderMetadata
             selectableView.onSelectionDebugEvent = onSelectionDebugEvent
+            selectableView.onMeasurementStateChanged = onMeasurementStateChanged
             selectableView.manualSelectionEnabled = manualSelectionEnabled
             SelectionDebugActionDispatcher.shared.performSelectAt = { [weak selectableView] request in
                 selectableView?.performDebugSelectAt(request)
@@ -138,8 +141,11 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
     var selectionDebugOutputDirectory = "/tmp/quicklook-selection-debug"
     var loaderMetadata: [String: String] = [:]
     var onSelectionDebugEvent: ((SelectionDebugEvent) -> Void)?
+    var onMeasurementStateChanged: ((SelectionMeasurementState) -> Void)?
     var manualSelectionEnabled = true
     private var surfaceGeometryRestores: [(node: SCNNode, geometry: SCNGeometry)] = []
+    private var activeSurfaceHighlight: (node: SCNNode, triangleIndices: [Int])?
+    private var measurementState: SelectionMeasurementState = .empty
     private var selectionModelCache: [ObjectIdentifier: SelectionModel] = [:]
     private var meshTopologyCache: [ObjectIdentifier: MeshTopology] = [:]
     private var cachedMeshSettings = EdgeFitSettings()
@@ -230,7 +236,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             at: point,
             event: nil,
             expectation: request.expectation,
-            forceDebugEvent: true
+            forceDebugEvent: true,
+            modifierFlagsOverride: request.modifiers
         )
     }
 
@@ -242,6 +249,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         selectionModelCache.removeAll()
         meshTopologyCache.removeAll()
         cachedMeshSettings = edgeFitSettings
+        activeSurfaceHighlight = nil
+        measurementState = .empty
     }
 
     private func selectionModel(for geometry: SCNGeometry) -> SelectionModel? {
@@ -278,7 +287,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         at point: CGPoint,
         event: NSEvent? = nil,
         expectation: SelectionDebugExpectation? = nil,
-        forceDebugEvent: Bool = false
+        forceDebugEvent: Bool = false,
+        modifierFlagsOverride: [String]? = nil
     ) -> SelectionDebugEvent? {
         let selectionStart = CFAbsoluteTimeGetCurrent()
         let shouldWriteDebugEvent = selectionDebugMode || forceDebugEvent
@@ -286,6 +296,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         guard let scene else {
             return nil
         }
+        let modifierNames = selectionModifierNames(event: event, override: modifierFlagsOverride)
 
         // Start every input transaction from a clean state so previous surface overlays
         // do not affect the next click's ray-cast or candidate topology.
@@ -297,10 +308,12 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                     makeSurfaceProbeRecord(
                         at: point,
                         event: event,
+                        modifierFlagsOverride: modifierFlagsOverride,
                         resolvedSelection: nil
                     )
                 )
             }
+            updateMeasurementStateForNoSelection(modifiers: modifierNames, scene: scene)
             let elapsedMs = (CFAbsoluteTimeGetCurrent() - selectionStart) * 1000
             let pendingDebugEvent = makeSelectionDebugEventIfNeeded(
                 at: point,
@@ -308,7 +321,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 resolvedSelection: nil,
                 elapsedMs: elapsedMs,
                 expectation: expectation,
-                forceDebugEvent: forceDebugEvent
+                forceDebugEvent: forceDebugEvent,
+                modifierFlagsOverride: modifierFlagsOverride
             )
             let debugEvent = writeSelectionDebugEvent(pendingDebugEvent, beforeImage: beforeImage)
             NSLog("Selection ignored: no nearby downloadable edge or surface elapsedMs=%.2f", elapsedMs)
@@ -320,6 +334,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 makeSurfaceProbeRecord(
                     at: point,
                     event: event,
+                    modifierFlagsOverride: modifierFlagsOverride,
                     resolvedSelection: selectionResult
                 )
             )
@@ -332,24 +347,45 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             resolvedSelection: selectionResult,
             elapsedMs: resolvedElapsedMs,
             expectation: expectation,
-            forceDebugEvent: forceDebugEvent
+            forceDebugEvent: forceDebugEvent,
+            modifierFlagsOverride: modifierFlagsOverride
         )
 
         switch selectionResult {
         case .surface(let hit, let surfaceSelection):
-            drawSurfaceSelection(
+            let measurementEntity = makeSurfaceMeasurementEntity(
+                hit: hit,
+                surfaceSelection: surfaceSelection
+            )
+            let didDraw = drawSurfaceSelection(
                 hit: hit,
                 surfaceSelection: surfaceSelection,
                 scene: scene,
                 selectionStart: selectionStart
             )
+            if didDraw, let measurementEntity {
+                setMeasurementState(.singleSurface(measurementEntity))
+            } else if didDraw == false {
+                activeSurfaceHighlight = nil
+                setMeasurementState(.empty)
+            }
         case .edge(let hit, let resolved):
-            drawEdgeSelection(
+            let didDraw = drawEdgeSelection(
                 hit: hit,
                 resolved: resolved,
                 scene: scene,
                 selectionStart: selectionStart
             )
+            if didDraw {
+                updateMeasurementStateForEdge(
+                    resolved,
+                    modifiers: modifierNames,
+                    scene: scene
+                )
+            } else {
+                activeSurfaceHighlight = nil
+                setMeasurementState(.empty)
+            }
         }
 
         return writeSelectionDebugEvent(pendingDebugEvent, beforeImage: beforeImage)
@@ -360,7 +396,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         resolved: EdgeSelectionCandidate,
         scene: SCNScene,
         selectionStart: CFAbsoluteTime
-    ) {
+    ) -> Bool {
         let edgeSnap = resolved.edgeSnap
         let chainWorldPoints = resolved.chainWorldPoints
         let chainKind = resolved.chainKind
@@ -376,7 +412,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 chainLength,
                 chainWorldPoints.count
             )
-            return
+            return false
         }
 
         // Clear and rebuild overlay only once we have a valid, downloadable edge candidate.
@@ -388,7 +424,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
 
         guard let geometry = hit.node.geometry,
               let mesh = meshTopology(for: geometry) else {
-            return
+            return false
         }
 
         let snappedWorldPosition = simdVector(hit.node.convertPosition(scnVector(edgeSnap.position), to: nil))
@@ -497,6 +533,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
 
         let elapsedMs = (CFAbsoluteTimeGetCurrent() - selectionStart) * 1000
         NSLog("Selection completed elapsedMs=%.2f", elapsedMs)
+        return true
     }
 
     private func drawSurfaceSelection(
@@ -504,7 +541,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         surfaceSelection: SurfaceSelectionCandidate,
         scene: SCNScene,
         selectionStart: CFAbsoluteTime
-    ) {
+    ) -> Bool {
         clearDebugSelection(from: scene)
 
         guard let geometry = hit.node.geometry,
@@ -513,13 +550,14 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 triangleIndices: surfaceSelection.triangleIndices,
                 selectionModel: selectionModel,
                 baseMaterial: geometry.materials.first
-              ) else {
+        ) else {
             let elapsedMs = (CFAbsoluteTimeGetCurrent() - selectionStart) * 1000
             NSLog("Surface selection failed to build overlay elapsedMs=%.2f", elapsedMs)
-            return
+            return false
         }
 
         rememberSurfaceGeometry(for: hit.node, geometry: geometry)
+        activeSurfaceHighlight = (node: hit.node, triangleIndices: surfaceSelection.triangleIndices)
         hit.node.geometry = selectedGeometry
 
         let elapsedMs = (CFAbsoluteTimeGetCurrent() - selectionStart) * 1000
@@ -531,6 +569,166 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             surfaceSelection.edgePromotionThreshold,
             elapsedMs
         )
+        return true
+    }
+
+    private func setMeasurementState(_ state: SelectionMeasurementState) {
+        measurementState = state
+        onMeasurementStateChanged?(state)
+    }
+
+    private func updateMeasurementStateForNoSelection(modifiers: [String], scene: SCNScene) {
+        if preservesSelection(modifiers: modifiers), !measurementState.isEmpty {
+            redrawMeasurementHighlight(for: measurementState, scene: scene)
+            onMeasurementStateChanged?(measurementState)
+            return
+        }
+
+        activeSurfaceHighlight = nil
+        setMeasurementState(.empty)
+    }
+
+    private func updateMeasurementStateForEdge(
+        _ resolved: EdgeSelectionCandidate,
+        modifiers: [String],
+        scene: SCNScene
+    ) {
+        let entity = makeEdgeMeasurementEntity(resolved)
+        let isCommand = modifiers.contains("command")
+        let isShift = modifiers.contains("shift")
+
+        var nextEdges: [SelectionMeasurementEntity]
+        if isCommand {
+            let currentEdges = measurementState.entities.filter { $0.kind == "edge" }
+            if currentEdges.contains(where: { $0.id == entity.id }) {
+                nextEdges = currentEdges.filter { $0.id != entity.id }
+            } else {
+                nextEdges = currentEdges + [entity]
+            }
+        } else if isShift {
+            nextEdges = measurementState.entities.filter { $0.kind == "edge" } + [entity]
+        } else {
+            nextEdges = [entity]
+        }
+
+        activeSurfaceHighlight = nil
+        let nextState = SelectionMeasurementState.edges(nextEdges)
+        setMeasurementState(nextState)
+        redrawMeasurementHighlight(for: nextState, scene: scene)
+    }
+
+    private func preservesSelection(modifiers: [String]) -> Bool {
+        modifiers.contains("shift") || modifiers.contains("command")
+    }
+
+    private func redrawMeasurementHighlight(for state: SelectionMeasurementState, scene: SCNScene) {
+        clearDebugSelection(from: scene)
+
+        switch state.kind {
+        case "edge", "multiEdge":
+            activeSurfaceHighlight = nil
+            let edgeEntities = state.entities.filter { $0.kind == "edge" && $0.simdPoints.count >= 2 }
+            guard !edgeEntities.isEmpty else {
+                return
+            }
+
+            let overlayRoot = SCNNode()
+            overlayRoot.name = selectionRootName
+            scene.rootNode.addChildNode(overlayRoot)
+
+            for entity in edgeEntities {
+                overlayRoot.addChildNode(makeEdgeChainNode(points: entity.simdPoints))
+            }
+            updateScreenStableHighlights()
+
+        case "surface":
+            redrawActiveSurfaceHighlight()
+
+        default:
+            activeSurfaceHighlight = nil
+        }
+    }
+
+    private func redrawActiveSurfaceHighlight() {
+        guard let activeSurfaceHighlight,
+              let geometry = activeSurfaceHighlight.node.geometry,
+              let selectionModel = selectionModel(for: geometry),
+              let selectedGeometry = makeSurfaceSelectionGeometry(
+                triangleIndices: activeSurfaceHighlight.triangleIndices,
+                selectionModel: selectionModel,
+                baseMaterial: geometry.materials.first
+              ) else {
+            return
+        }
+
+        rememberSurfaceGeometry(for: activeSurfaceHighlight.node, geometry: geometry)
+        activeSurfaceHighlight.node.geometry = selectedGeometry
+    }
+
+    private func makeEdgeMeasurementEntity(
+        _ resolved: EdgeSelectionCandidate
+    ) -> SelectionMeasurementEntity {
+        let edge = resolved.edgeSnap.selectedEdge
+        let points = resolved.chainWorldPoints
+        let shapeDetection = EdgeShapeDetector.analyze(points: points)
+        let shapeLabel = shapeDetection.detectedShape == "unknown" ? "Edge" : shapeDetection.detectedShape
+        let radius = shapeDetection.segments.compactMap(\.circleRadius).first
+
+        return SelectionMeasurementEntity(
+            id: "edge:\(edge.a)-\(edge.b)",
+            kind: "edge",
+            label: shapeLabel,
+            sourceIDs: [
+                "edge:\(edge.a)-\(edge.b)",
+                "triangle:\(resolved.edgeSnap.selectedTriangle)",
+            ],
+            length: SelectionMeasurementCalculator.polylineLength(points),
+            radius: radius,
+            area: nil,
+            perimeter: nil,
+            triangleCount: nil,
+            pointCount: points.count,
+            shape: shapeDetection.detectedShape,
+            surfaceType: nil,
+            points: points.map { $0.asArray() }
+        )
+    }
+
+    private func makeSurfaceMeasurementEntity(
+        hit: SCNHitTestResult,
+        surfaceSelection: SurfaceSelectionCandidate
+    ) -> SelectionMeasurementEntity? {
+        guard let geometry = hit.node.geometry,
+              let selectionModel = selectionModel(for: geometry) else {
+            return nil
+        }
+
+        let seedTriangleID = SelectionTriangleID(rawValue: surfaceSelection.seedTriangle)
+        let patchID = selectionModel.surfacePatchID(forTriangle: seedTriangleID)
+        let patch = patchID.flatMap { selectionModel.surfacePatch($0) }
+        let measurements = SelectionMeasurementCalculator.surfaceMeasurements(
+            triangleIndices: surfaceSelection.triangleIndices,
+            selectionModel: selectionModel,
+            node: hit.node
+        )
+        let entityID = patchID.map { "surfacePatch:\($0.rawValue)" } ?? "surfaceSeed:\(surfaceSelection.seedTriangle)"
+        let surfaceType = patch?.isPlanar == true ? "Planar" : "Curved"
+
+        return SelectionMeasurementEntity(
+            id: entityID,
+            kind: "surface",
+            label: patchID.map { "Surface \($0.rawValue)" } ?? "Surface",
+            sourceIDs: [entityID, "seedTriangle:\(surfaceSelection.seedTriangle)"],
+            length: nil,
+            radius: nil,
+            area: measurements.area,
+            perimeter: measurements.perimeter,
+            triangleCount: surfaceSelection.triangleIndices.count,
+            pointCount: nil,
+            shape: nil,
+            surfaceType: surfaceType,
+            points: []
+        )
     }
 
     private func makeSelectionDebugEventIfNeeded(
@@ -539,7 +737,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         resolvedSelection: ResolvedSelection?,
         elapsedMs: Double,
         expectation: SelectionDebugExpectation?,
-        forceDebugEvent: Bool
+        forceDebugEvent: Bool,
+        modifierFlagsOverride: [String]?
     ) -> SelectionDebugEvent? {
         guard selectionDebugMode || forceDebugEvent else {
             return nil
@@ -550,7 +749,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             event: event,
             resolvedSelection: resolvedSelection,
             elapsedMs: elapsedMs,
-            expectation: expectation
+            expectation: expectation,
+            modifierFlagsOverride: modifierFlagsOverride
         )
     }
 
@@ -595,11 +795,13 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         event: NSEvent?,
         resolvedSelection: ResolvedSelection?,
         elapsedMs: Double,
-        expectation: SelectionDebugExpectation?
+        expectation: SelectionDebugExpectation?,
+        modifierFlagsOverride: [String]?
     ) -> SelectionDebugEvent {
         let probe = makeSurfaceProbeRecord(
             at: point,
             event: event,
+            modifierFlagsOverride: modifierFlagsOverride,
             resolvedSelection: resolvedSelection
         )
         let selectedEdgePointCount: Int
@@ -1669,6 +1871,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
     private func makeSurfaceProbeRecord(
         at point: CGPoint,
         event: NSEvent?,
+        modifierFlagsOverride: [String]? = nil,
         resolvedSelection: ResolvedSelection?
     ) -> SurfaceProbeRecord {
         let resolvedKind: String
@@ -1696,7 +1899,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 modelHint: sanitizeFileHint(edgeProbeModelHint),
                 viewSize: [Float(bounds.width), Float(bounds.height)],
                 viewportPoint: [Float(point.x), Float(point.y)],
-                modifierFlags: modifierFlagNames(event?.modifierFlags ?? []),
+                modifierFlags: selectionModifierNames(event: event, override: modifierFlagsOverride),
                 resolvedKind: resolvedKind,
                 sceneNodeName: nil,
                 hitLocalPoint: nil,
@@ -1765,7 +1968,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             modelHint: sanitizeFileHint(edgeProbeModelHint),
             viewSize: [Float(bounds.width), Float(bounds.height)],
             viewportPoint: [Float(point.x), Float(point.y)],
-            modifierFlags: modifierFlagNames(event?.modifierFlags ?? []),
+            modifierFlags: selectionModifierNames(event: event, override: modifierFlagsOverride),
             resolvedKind: resolvedKind,
             sceneNodeName: hit.node.name,
             hitLocalPoint: hitLocal.asArray(),
@@ -1831,6 +2034,42 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         if flags.contains(.command) { names.append("command") }
         if flags.contains(.capsLock) { names.append("capsLock") }
         return names
+    }
+
+    private func selectionModifierNames(event: NSEvent?, override: [String]?) -> [String] {
+        if let override {
+            return normalizedModifierNames(override)
+        }
+        return modifierFlagNames(event?.modifierFlags ?? [])
+    }
+
+    private func normalizedModifierNames(_ names: [String]) -> [String] {
+        var result: [String] = []
+        var seen: Set<String> = []
+
+        for rawName in names {
+            let normalized: String
+            switch rawName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "cmd", "command", "meta":
+                normalized = "command"
+            case "shift":
+                normalized = "shift"
+            case "ctrl", "control":
+                normalized = "control"
+            case "alt", "option":
+                normalized = "option"
+            case "caps", "capslock", "caps_lock":
+                normalized = "capsLock"
+            default:
+                continue
+            }
+
+            if seen.insert(normalized).inserted {
+                result.append(normalized)
+            }
+        }
+
+        return result
     }
 
     private func canDownloadSelection(mode: EdgeSelectionMode, candidate: EdgeSelectionCandidate) -> Bool {

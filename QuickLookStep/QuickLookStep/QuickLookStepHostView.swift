@@ -31,6 +31,10 @@ struct QuickLookStepHostView: View {
     @State private var currentModelPathForProbe: String = ""
     @State private var currentLoaderMetadataForProbe: [String: String] = [:]
     @State private var latestSelectionDebugEvent: SelectionDebugEvent? = nil
+    @State private var latestMeasurementState: SelectionMeasurementState = .empty
+    @State private var measurementPanelHidden = false
+    @AppStorage("quicklook.measurement.unit") private var measurementUnitRaw = MeasurementUnit.model.rawValue
+    @AppStorage("quicklook.measurement.mmPerModelUnit") private var mmPerModelUnit = 1.0
 
     init(
         testingPlanPath: String? = nil,
@@ -62,6 +66,21 @@ struct QuickLookStepHostView: View {
         self.edgeOnlyMode = edgeOnlyMode
     }
 
+    private var measurementUnitBinding: Binding<MeasurementUnit> {
+        Binding(
+            get: {
+                MeasurementUnit.resolved(from: measurementUnitRaw)
+            },
+            set: { nextUnit in
+                measurementUnitRaw = nextUnit.rawValue
+            }
+        )
+    }
+
+    private var currentMeasurementUnit: MeasurementUnit {
+        MeasurementUnit.resolved(from: measurementUnitRaw)
+    }
+
     var body: some View {
         ZStack {
             if let scene {
@@ -80,6 +99,10 @@ struct QuickLookStepHostView: View {
                     loaderMetadata: currentLoaderMetadataForProbe,
                     onSelectionDebugEvent: { event in
                         latestSelectionDebugEvent = event
+                    },
+                    onMeasurementStateChanged: { state in
+                        latestMeasurementState = state
+                        measurementPanelHidden = false
                     },
                     manualSelectionEnabled: testingPlanPath == nil || hasManualLoad
                 )
@@ -104,6 +127,20 @@ struct QuickLookStepHostView: View {
                     .padding(12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .allowsHitTesting(false)
+            }
+
+            if !latestMeasurementState.isEmpty, !measurementPanelHidden {
+                SelectionMeasurementPanel(
+                    state: latestMeasurementState,
+                    unit: measurementUnitBinding,
+                    mmPerModelUnit: $mmPerModelUnit,
+                    onClose: {
+                        measurementPanelHidden = true
+                    }
+                )
+                .padding(.top, 18)
+                .padding(.trailing, 18)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
         }
         .frame(minWidth: 900, minHeight: 600)
@@ -273,8 +310,10 @@ struct QuickLookStepHostView: View {
                 actionDurationMs: loadElapsedMs,
                 selectionDebugEvent: nil,
                 selectionDebugExpectationFailures: nil,
+                measurementExpectationFailures: nil,
                 scene: scene
             ))
+            try await Task.sleep(nanoseconds: 120_000_000)
 
             for (index, action) in scenario.actions.enumerated() {
                 let actionStart = CFAbsoluteTimeGetCurrent()
@@ -316,6 +355,18 @@ struct QuickLookStepHostView: View {
                         expectationFailures.joined(separator: "; ")
                     )
                 }
+                let measurementSummary = measurementSummaryForTesting()
+                let measurementFailures = measurementExpectationFailures(
+                    summary: measurementSummary,
+                    expectation: action.measurementExpect
+                )
+                if !measurementFailures.isEmpty {
+                    NSLog(
+                        "Testing measurement expectation failed action=%ld failures=%@",
+                        index,
+                        measurementFailures.joined(separator: "; ")
+                    )
+                }
 
                 events.append(cameraSnapshot(
                     for: scenario,
@@ -329,6 +380,7 @@ struct QuickLookStepHostView: View {
                     actionDurationMs: actionElapsedMs,
                     selectionDebugEvent: selectionEvent,
                     selectionDebugExpectationFailures: expectationFailures.isEmpty ? nil : expectationFailures,
+                    measurementExpectationFailures: measurementFailures.isEmpty ? nil : measurementFailures,
                     scene: scene
                 ))
             }
@@ -452,14 +504,16 @@ struct QuickLookStepHostView: View {
                 x: x,
                 y: y,
                 coordinateSpace: action.coordinateSpace ?? .normalizedViewport,
-                expectation: action.expect
+                expectation: action.expect,
+                modifiers: action.modifiers
             )
             let event = SelectionDebugActionDispatcher.shared.performSelectAt?(request)
             NSLog(
-                "Testing selectAt x=%.4f y=%.4f space=%@ result=%@ path=%@",
+                "Testing selectAt x=%.4f y=%.4f space=%@ modifiers=%@ result=%@ path=%@",
                 x,
                 y,
                 request.coordinateSpace.rawValue,
+                (action.modifiers ?? []).joined(separator: ","),
                 event?.resolver.finalKind ?? "none",
                 event?.eventPath ?? "none"
             )
@@ -484,6 +538,16 @@ struct QuickLookStepHostView: View {
             if let fieldOfView = action.fieldOfView {
                 camera.fieldOfView = CGFloat(max(5.0, min(120.0, fieldOfView)))
             }
+        case .setMeasurementUnit:
+            if let unit = action.unit,
+               MeasurementUnit(rawValue: unit) != nil {
+                measurementUnitRaw = unit
+            }
+            if let scale = action.mmPerModelUnit,
+               scale.isFinite,
+               scale > 0 {
+                mmPerModelUnit = scale
+            }
         case .wait:
             break
         }
@@ -503,6 +567,7 @@ struct QuickLookStepHostView: View {
         actionDurationMs: Double? = nil,
         selectionDebugEvent: SelectionDebugEvent?,
         selectionDebugExpectationFailures: [String]?,
+        measurementExpectationFailures: [String]?,
         scene: SCNScene
     ) -> TestingSample {
         guard
@@ -526,7 +591,9 @@ struct QuickLookStepHostView: View {
                 actionDurationMs: actionDurationMs,
                 selectionDebugEventPath: selectionDebugEvent?.eventPath,
                 selectionDebugSummary: selectionDebugEvent?.summary,
-                selectionDebugExpectationFailures: selectionDebugExpectationFailures
+                selectionDebugExpectationFailures: selectionDebugExpectationFailures,
+                measurementSummary: measurementSummaryForTesting(),
+                measurementExpectationFailures: measurementExpectationFailures
             )
         }
 
@@ -547,7 +614,9 @@ struct QuickLookStepHostView: View {
             actionDurationMs: actionDurationMs,
             selectionDebugEventPath: selectionDebugEvent?.eventPath,
             selectionDebugSummary: selectionDebugEvent?.summary,
-            selectionDebugExpectationFailures: selectionDebugExpectationFailures
+            selectionDebugExpectationFailures: selectionDebugExpectationFailures,
+            measurementSummary: measurementSummaryForTesting(),
+            measurementExpectationFailures: measurementExpectationFailures
         )
     }
 
@@ -596,6 +665,68 @@ struct QuickLookStepHostView: View {
         }
 
         return failures
+    }
+
+    private func measurementSummaryForTesting() -> SelectionMeasurementSummary {
+        latestMeasurementState.summary.withUnitMode(currentMeasurementUnit)
+    }
+
+    private func measurementExpectationFailures(
+        summary: SelectionMeasurementSummary,
+        expectation: SelectionMeasurementExpectation?
+    ) -> [String] {
+        guard let expectation else {
+            return []
+        }
+
+        var failures: [String] = []
+        if let kind = expectation.kind,
+           summary.kind != kind {
+            failures.append("measurement kind expected \(kind), got \(summary.kind)")
+        }
+        if let entityCount = expectation.entityCount,
+           summary.entityCount != entityCount {
+            failures.append("measurement entityCount expected \(entityCount), got \(summary.entityCount)")
+        }
+        if let unitMode = expectation.unitMode,
+           summary.unitMode != unitMode {
+            failures.append("measurement unitMode expected \(unitMode), got \(summary.unitMode ?? "nil")")
+        }
+
+        let totalLength = summary.totalLength ?? summary.length
+        if let minTotalLength = expectation.minTotalLength,
+           (totalLength ?? -Float.greatestFiniteMagnitude) < minTotalLength {
+            failures.append("measurement totalLength expected >= \(minTotalLength), got \(formatFailureFloat(totalLength))")
+        }
+        if let maxTotalLength = expectation.maxTotalLength,
+           (totalLength ?? Float.greatestFiniteMagnitude) > maxTotalLength {
+            failures.append("measurement totalLength expected <= \(maxTotalLength), got \(formatFailureFloat(totalLength))")
+        }
+        if let minArea = expectation.minArea,
+           (summary.area ?? -Float.greatestFiniteMagnitude) < minArea {
+            failures.append("measurement area expected >= \(minArea), got \(formatFailureFloat(summary.area))")
+        }
+        if let maxArea = expectation.maxArea,
+           (summary.area ?? Float.greatestFiniteMagnitude) > maxArea {
+            failures.append("measurement area expected <= \(maxArea), got \(formatFailureFloat(summary.area))")
+        }
+        if let minPerimeter = expectation.minPerimeter,
+           (summary.perimeter ?? -Float.greatestFiniteMagnitude) < minPerimeter {
+            failures.append("measurement perimeter expected >= \(minPerimeter), got \(formatFailureFloat(summary.perimeter))")
+        }
+        if let maxPerimeter = expectation.maxPerimeter,
+           (summary.perimeter ?? Float.greatestFiniteMagnitude) > maxPerimeter {
+            failures.append("measurement perimeter expected <= \(maxPerimeter), got \(formatFailureFloat(summary.perimeter))")
+        }
+
+        return failures
+    }
+
+    private func formatFailureFloat(_ value: Float?) -> String {
+        guard let value, value.isFinite else {
+            return "nil"
+        }
+        return String(format: "%.4f", value)
     }
 
     private func snapshotPath(for scenario: TestingScenario, action: String, actionIndex: Int, phase: String) -> String {
@@ -699,6 +830,8 @@ struct QuickLookStepHostView: View {
             print("Loading file at", url.path)
             currentModelPathForProbe = url.path
             latestSelectionDebugEvent = nil
+            latestMeasurementState = .empty
+            measurementPanelHidden = false
             let loadResult = try SceneBuilder.sceneWithTrace(for: url)
             currentLoaderMetadataForProbe = loadResult.metadata
             scene = loadResult.scene
@@ -706,6 +839,8 @@ struct QuickLookStepHostView: View {
         } catch {
             scene = nil
             currentLoaderMetadataForProbe = [:]
+            latestMeasurementState = .empty
+            measurementPanelHidden = false
             loadError = error.localizedDescription
             print("Failed to load model:", error.localizedDescription)
             return (0, "failed:\(error.localizedDescription)", [:])

@@ -24,6 +24,7 @@ struct TestingAction: Codable {
     /// - selectSurface: test-only surface overlay selection on the loaded scene
     /// - selectAt: click the same selection path used by mouse input
     /// - setCamera: restore an exact camera pose for replay
+    /// - setMeasurementUnit: update the measurement panel unit or calibration
     let kind: TestingActionKind
     let value: Double?
     let durationMs: Double?
@@ -31,6 +32,10 @@ struct TestingAction: Codable {
     let y: Double?
     let coordinateSpace: SelectionDebugCoordinateSpace?
     let expect: SelectionDebugExpectation?
+    let modifiers: [String]?
+    let measurementExpect: SelectionMeasurementExpectation?
+    let unit: String?
+    let mmPerModelUnit: Double?
     let orientationDegrees: [Double]?
     let cameraPosition: [Double]?
     let fieldOfView: Double?
@@ -43,6 +48,10 @@ struct TestingAction: Codable {
         y: Double? = nil,
         coordinateSpace: SelectionDebugCoordinateSpace? = nil,
         expect: SelectionDebugExpectation? = nil,
+        modifiers: [String]? = nil,
+        measurementExpect: SelectionMeasurementExpectation? = nil,
+        unit: String? = nil,
+        mmPerModelUnit: Double? = nil,
         orientationDegrees: [Double]? = nil,
         cameraPosition: [Double]? = nil,
         fieldOfView: Double? = nil
@@ -54,6 +63,10 @@ struct TestingAction: Codable {
         self.y = y
         self.coordinateSpace = coordinateSpace
         self.expect = expect
+        self.modifiers = modifiers
+        self.measurementExpect = measurementExpect
+        self.unit = unit
+        self.mmPerModelUnit = mmPerModelUnit
         self.orientationDegrees = orientationDegrees
         self.cameraPosition = cameraPosition
         self.fieldOfView = fieldOfView
@@ -69,6 +82,7 @@ enum TestingActionKind: String, Codable {
     case selectSurface
     case selectAt
     case setCamera
+    case setMeasurementUnit
 }
 
 struct TestingRunReport: Codable {
@@ -100,6 +114,8 @@ struct TestingSample: Codable {
     let selectionDebugEventPath: String?
     let selectionDebugSummary: SelectionDebugEventSummary?
     let selectionDebugExpectationFailures: [String]?
+    let measurementSummary: SelectionMeasurementSummary?
+    let measurementExpectationFailures: [String]?
 }
 
 extension SCNNode {

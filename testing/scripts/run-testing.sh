@@ -132,9 +132,20 @@ for report in data.get("reports", []):
                     (event.get("selectionDebugSummary") or {}).get("eventPath"),
                 )
             )
+        measurement_failures = event.get("measurementExpectationFailures") or []
+        if measurement_failures:
+            failures.append(
+                (
+                    scenario,
+                    event.get("actionIndex"),
+                    event.get("action"),
+                    measurement_failures,
+                    None,
+                )
+            )
 
 if failures:
-    print("Selection debug expectation failure(s):", file=sys.stderr)
+    print("Testing expectation failure(s):", file=sys.stderr)
     for scenario, index, action, event_failures, event_path in failures:
         print(f"  - {scenario} action {index} {action}: {'; '.join(event_failures)}", file=sys.stderr)
         if event_path:
