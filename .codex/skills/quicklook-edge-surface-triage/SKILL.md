@@ -134,6 +134,21 @@ testing/scripts/verify_quicklook_ui_launch.sh
 - `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`
 - `QLS_FORCE_DIRECT_LAUNCH=1 testing/scripts/run-testing.sh testing/plans/orientation-zoom.json testing/results/diagnosis-orientation-zoom-direct.json`
 
+## 2026-07-03 Update
+
+### Problem context
+- The first production selection-engine foundation now lives outside `SceneKitView.swift`, but the view is not wired to use it yet.
+
+### What changed
+- Added guidance to treat `SelectionModel`, `SelectionTopology`, and `SelectionGeometryReader` as the cacheable topology layer: stable triangle/edge/surface/loop IDs, welded/geometric edge buckets, 25° feature edges, 65° smooth-surface boundaries, max-extent-scaled coplanar expansion, and precomputed surface patches/edge loops.
+
+### Why it helped
+- Gives future edge/surface triage a concrete engine boundary to validate before changing click routing, probes, or highlight rendering.
+
+### Validation
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- Before replacing `MeshTopology` calls, compare `SelectionModel.nearestFeatureEdgeDistance(to:)`, `surfacePatch(forTriangle:)`, and `edgeLoop(containing:)` against the existing view behavior on the same hit triangle/edge.
+
 ## 2026-07-02 Update
 
 ### Problem context
