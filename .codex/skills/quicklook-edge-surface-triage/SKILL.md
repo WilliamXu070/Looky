@@ -134,6 +134,22 @@ testing/scripts/verify_quicklook_ui_launch.sh
 - `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`
 - `QLS_FORCE_DIRECT_LAUNCH=1 testing/scripts/run-testing.sh testing/plans/orientation-zoom.json testing/results/diagnosis-orientation-zoom-direct.json`
 
+## 2026-07-03 Update
+
+### Problem context
+- Integration planning found that `SceneKitView.resolveSelection(at:)` currently owns too much of the selection stack: hit-test arbitration, topology construction, edge candidates, surface candidates, and edge-vs-surface promotion.
+
+### What changed
+- Added the integration boundary: `SelectionModel` should own topology, selectable entities, candidate search, resolver decisions, and rejected-alternative evidence; SceneKit should keep hit-test input, overlay rendering, materials, geometry restoration, and probe/file output.
+
+### Why it helped
+- Keeps the refactor focused on one CAD-like selection engine while avoiding a second mesh-scanning path inside the view layer.
+
+### Validation
+- After integrating the engine, inspect `SceneKitView.swift` and confirm `resolveSelection(at:)` delegates to the engine instead of rebuilding `MeshTopology` directly.
+- Run `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`.
+- Run `testing/surface-selection/scripts/run_surface_layer_test.sh`, `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`, and a direct-launch plan with `QLS_FORCE_DIRECT_LAUNCH=1`.
+
 ## 2026-07-02 Update
 
 ### Problem context
