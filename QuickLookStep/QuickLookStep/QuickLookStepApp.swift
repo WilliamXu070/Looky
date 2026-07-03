@@ -17,6 +17,9 @@ private struct LaunchSettings {
     let edgeProbeOutputPath: String?
     let surfaceProbeEnabled: Bool
     let surfaceProbeOutputPath: String?
+    let selectionDebugEnabled: Bool
+    let selectionDebugOutputPath: String?
+    let selectionDebugHUDEnabled: Bool
     let edgeSelectionMode: EdgeSelectionMode
     let edgeOnlyMode: Bool
 }
@@ -48,6 +51,9 @@ private func parseLaunchSettings(from arguments: [String]) -> LaunchSettings {
     var edgeProbeOutputPath: String?
     var surfaceProbeEnabled = false
     var surfaceProbeOutputPath: String?
+    var selectionDebugEnabled = false
+    var selectionDebugOutputPath: String?
+    var selectionDebugHUDEnabled = false
     var edgeSelectionMode: EdgeSelectionMode = .fitted
     var edgeOnlyMode = false
 
@@ -74,6 +80,14 @@ private func parseLaunchSettings(from arguments: [String]) -> LaunchSettings {
             surfaceProbeEnabled = true
         } else if arg == "--surface-probe=0" {
             surfaceProbeEnabled = false
+        } else if arg == "--selection-debug" || arg == "--selection-debug=1" {
+            selectionDebugEnabled = true
+        } else if arg == "--selection-debug=0" {
+            selectionDebugEnabled = false
+        } else if arg == "--selection-debug-hud" || arg == "--selection-debug-hud=1" {
+            selectionDebugHUDEnabled = true
+        } else if arg == "--selection-debug-hud=0" {
+            selectionDebugHUDEnabled = false
         } else if arg == "--edge-only" || arg == "--edge-only=1" {
             edgeOnlyMode = true
         } else if arg == "--edge-only=0" {
@@ -94,6 +108,11 @@ private func parseLaunchSettings(from arguments: [String]) -> LaunchSettings {
         } else if arg == "--surface-probe-output", idx + 1 < arguments.count {
             idx += 1
             surfaceProbeOutputPath = arguments[idx]
+        } else if arg.hasPrefix("--selection-debug-output=") {
+            selectionDebugOutputPath = String(arg.dropFirst("--selection-debug-output=".count))
+        } else if arg == "--selection-debug-output", idx + 1 < arguments.count {
+            idx += 1
+            selectionDebugOutputPath = arguments[idx]
         } else if arg.hasPrefix("--sample="), let path = possibleSupportedPath(from: String(arg.dropFirst("--sample=".count))) {
             initialFilePath = path
         } else if arg == "--sample", idx + 1 < arguments.count {
@@ -118,6 +137,9 @@ private func parseLaunchSettings(from arguments: [String]) -> LaunchSettings {
         edgeProbeOutputPath: edgeProbeOutputPath,
         surfaceProbeEnabled: surfaceProbeEnabled,
         surfaceProbeOutputPath: surfaceProbeOutputPath,
+        selectionDebugEnabled: selectionDebugEnabled,
+        selectionDebugOutputPath: selectionDebugOutputPath,
+        selectionDebugHUDEnabled: selectionDebugHUDEnabled,
         edgeSelectionMode: edgeSelectionMode,
         edgeOnlyMode: edgeOnlyMode
     )
@@ -135,6 +157,9 @@ private func resolveLaunchSettings() -> LaunchSettings {
     let edgeProbeOutput = env["QLS_EDGE_PROBE_OUTPUT"]?.trimmingCharacters(in: .whitespacesAndNewlines)
     let surfaceProbe = env["QLS_SURFACE_PROBE"]?.trimmingCharacters(in: .whitespacesAndNewlines)
     let surfaceProbeOutput = env["QLS_SURFACE_PROBE_OUTPUT"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let selectionDebug = env["QLS_SELECTION_DEBUG"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let selectionDebugOutput = env["QLS_SELECTION_DEBUG_OUTPUT"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let selectionDebugHUD = env["QLS_SELECTION_DEBUG_HUD"]?.trimmingCharacters(in: .whitespacesAndNewlines)
     let envSelectionMode = env["QLS_EDGE_SELECTION_MODE"]?.trimmingCharacters(in: .whitespacesAndNewlines)
     let edgeSelectionMode = parseEdgeSelectionMode(from: envSelectionMode ?? "fitted")
     let envEdgeOnly = env["QLS_EDGE_ONLY"]?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -148,6 +173,9 @@ private func resolveLaunchSettings() -> LaunchSettings {
         edgeProbeOutputPath: (edgeProbeOutput == "") ? nil : (edgeProbeOutput ?? cli.edgeProbeOutputPath),
         surfaceProbeEnabled: (surfaceProbe == "1") || cli.surfaceProbeEnabled,
         surfaceProbeOutputPath: (surfaceProbeOutput == "") ? nil : (surfaceProbeOutput ?? cli.surfaceProbeOutputPath),
+        selectionDebugEnabled: (selectionDebug == "1") || cli.selectionDebugEnabled,
+        selectionDebugOutputPath: (selectionDebugOutput == "") ? nil : (selectionDebugOutput ?? cli.selectionDebugOutputPath),
+        selectionDebugHUDEnabled: (selectionDebugHUD == "1") || cli.selectionDebugHUDEnabled,
         edgeSelectionMode: envSelectionMode == nil ? cli.edgeSelectionMode : edgeSelectionMode,
         edgeOnlyMode: (envEdgeOnly == "1") || cli.edgeOnlyMode
     )
@@ -225,6 +253,9 @@ private final class QuickLookAppDelegate: NSObject, NSApplicationDelegate {
             edgeProbeOutputPath: settings.edgeProbeOutputPath,
             surfaceProbeEnabled: settings.surfaceProbeEnabled,
             surfaceProbeOutputPath: settings.surfaceProbeOutputPath,
+            selectionDebugEnabled: settings.selectionDebugEnabled,
+            selectionDebugOutputPath: settings.selectionDebugOutputPath,
+            selectionDebugHUDEnabled: settings.selectionDebugHUDEnabled,
             edgeSelectionMode: settings.edgeSelectionMode,
             edgeOnlyMode: settings.edgeOnlyMode
         )

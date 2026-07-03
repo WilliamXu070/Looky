@@ -1,0 +1,52 @@
+{
+  "scenarios": [
+    {
+      "name": "cube-hole-selection-debug-smoke",
+      "file": "testing/input/cube_hole.step",
+      "actions": [
+        {
+          "kind": "selectAt",
+          "x": 0.5,
+          "y": 0.5,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "edge"
+          },
+          "durationMs": 120
+        },
+        {
+          "kind": "selectAt",
+          "x": 0.5,
+          "y": 0.62,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "surface",
+            "surfaceTriangleCount": 2
+          },
+          "durationMs": 120
+        },
+        {
+          "kind": "selectAt",
+          "x": 0.5,
+          "y": 0.38,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "surface",
+            "surfaceTriangleCount": 67
+          },
+          "durationMs": 120
+        },
+        {
+          "kind": "selectAt",
+          "x": 0.05,
+          "y": 0.05,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "none"
+          },
+          "durationMs": 120
+        }
+      ]
+    }
+  ]
+}

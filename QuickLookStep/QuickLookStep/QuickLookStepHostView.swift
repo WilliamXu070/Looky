@@ -16,6 +16,9 @@ struct QuickLookStepHostView: View {
     let edgeProbeOutputPath: String?
     let surfaceProbeEnabled: Bool
     let surfaceProbeOutputPath: String?
+    let selectionDebugEnabled: Bool
+    let selectionDebugOutputPath: String?
+    let selectionDebugHUDEnabled: Bool
     let edgeSelectionMode: EdgeSelectionMode
     let edgeOnlyMode: Bool
 
@@ -26,6 +29,8 @@ struct QuickLookStepHostView: View {
     @State private var hasManualLoad = false
     @State private var automatedTestingTask: Task<Void, Never>? = nil
     @State private var currentModelPathForProbe: String = ""
+    @State private var currentLoaderMetadataForProbe: [String: String] = [:]
+    @State private var latestSelectionDebugEvent: SelectionDebugEvent? = nil
 
     init(
         testingPlanPath: String? = nil,
@@ -36,6 +41,9 @@ struct QuickLookStepHostView: View {
         edgeProbeOutputPath: String? = nil,
         surfaceProbeEnabled: Bool = false,
         surfaceProbeOutputPath: String? = nil,
+        selectionDebugEnabled: Bool = false,
+        selectionDebugOutputPath: String? = nil,
+        selectionDebugHUDEnabled: Bool = false,
         edgeSelectionMode: EdgeSelectionMode = .fitted,
         edgeOnlyMode: Bool = false
     ) {
@@ -47,6 +55,9 @@ struct QuickLookStepHostView: View {
         self.edgeProbeOutputPath = edgeProbeOutputPath
         self.surfaceProbeEnabled = surfaceProbeEnabled
         self.surfaceProbeOutputPath = surfaceProbeOutputPath
+        self.selectionDebugEnabled = selectionDebugEnabled
+        self.selectionDebugOutputPath = selectionDebugOutputPath
+        self.selectionDebugHUDEnabled = selectionDebugHUDEnabled
         self.edgeSelectionMode = edgeSelectionMode
         self.edgeOnlyMode = edgeOnlyMode
     }
@@ -63,7 +74,14 @@ struct QuickLookStepHostView: View {
                     surfaceProbeMode: surfaceProbeEnabled,
                     surfaceProbeOutputDirectory: surfaceProbeOutputPath ?? "/tmp/quicklook-surface-probe",
                     edgeProbeModelHint: currentModelPathForProbe,
-                    edgeOnlyMode: edgeOnlyMode
+                    edgeOnlyMode: edgeOnlyMode,
+                    selectionDebugMode: selectionDebugEnabled || selectionDebugHUDEnabled,
+                    selectionDebugOutputDirectory: selectionDebugOutputPath ?? "/tmp/quicklook-selection-debug",
+                    loaderMetadata: currentLoaderMetadataForProbe,
+                    onSelectionDebugEvent: { event in
+                        latestSelectionDebugEvent = event
+                    },
+                    manualSelectionEnabled: testingPlanPath == nil || hasManualLoad
                 )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -79,6 +97,13 @@ struct QuickLookStepHostView: View {
                         .foregroundStyle(.blue)
                         .padding()
                 }
+            }
+
+            if selectionDebugHUDEnabled {
+                selectionDebugHUD
+                    .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .allowsHitTesting(false)
             }
         }
         .frame(minWidth: 900, minHeight: 600)
@@ -130,6 +155,43 @@ struct QuickLookStepHostView: View {
         .onDisappear {
             automatedTestingTask?.cancel()
             automatedTestingTask = nil
+        }
+    }
+
+    @ViewBuilder
+    private var selectionDebugHUD: some View {
+        if let event = latestSelectionDebugEvent {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Selection Debug")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                Text("\(event.resolver.finalKind): \(event.resolver.reason)")
+                    .lineLimit(2)
+                Text("tris \(event.resolver.selectedSurfaceTriangleCount)  edges \(event.resolver.edgeCandidateCount)")
+                Text(
+                    "seed \(event.resolver.seedTriangle.map(String.init) ?? "-")  near \(formatDebugFloat(event.resolver.nearestFeatureEdgeDistance)) / \(formatDebugFloat(event.resolver.surfacePromotionThreshold))"
+                )
+                Text(
+                    "vp \(formatDebugDouble(event.input.normalizedViewportPoint.first)) \(formatDebugDouble(event.input.normalizedViewportPoint.dropFirst().first))  \(event.eventID)"
+                )
+                if let warning = event.render.clippingWarning {
+                    Text(warning)
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
+                }
+            }
+            .font(.system(size: 11, weight: .regular, design: .monospaced))
+            .foregroundStyle(.white)
+            .padding(10)
+            .background(Color.black.opacity(0.72))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .frame(maxWidth: 520, alignment: .leading)
+        } else {
+            Text("Selection Debug: no clicks yet")
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(.white)
+                .padding(10)
+                .background(Color.black.opacity(0.72))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
         }
     }
 
@@ -208,6 +270,8 @@ struct QuickLookStepHostView: View {
                 requestedDurationMs: nil,
                 snapshotPath: capturedLoadSnapshot,
                 actionDurationMs: loadElapsedMs,
+                selectionDebugEvent: nil,
+                selectionDebugExpectationFailures: nil,
                 scene: scene
             ))
 
@@ -216,14 +280,16 @@ struct QuickLookStepHostView: View {
                 try Task.checkCancellation()
                 if hasManualLoad { return }
 
+                let selectionEvent: SelectionDebugEvent?
                 if action.kind == .wait {
                     if let waitMs = action.durationMs {
                         try await Task.sleep(nanoseconds: UInt64(waitMs * 1_000_000))
                     } else {
                         try await Task.sleep(nanoseconds: UInt64(16 * 1_000_000))
                     }
+                    selectionEvent = nil
                 } else {
-                    applyTestingAction(action, to: scene)
+                    selectionEvent = applyTestingAction(action, to: scene)
                     if let delayMs = action.durationMs {
                         try await Task.sleep(nanoseconds: UInt64(delayMs * 1_000_000))
                     }
@@ -238,6 +304,17 @@ struct QuickLookStepHostView: View {
                 let capturedSnapshot = saveSnapshot(scene, for: snapshotTarget)
 
                 let actionElapsedMs = (CFAbsoluteTimeGetCurrent() - actionStart) * 1000
+                let expectationFailures = selectionExpectationFailures(
+                    event: selectionEvent,
+                    expectation: action.expect
+                )
+                if !expectationFailures.isEmpty {
+                    NSLog(
+                        "Testing selection expectation failed action=%ld failures=%@",
+                        index,
+                        expectationFailures.joined(separator: "; ")
+                    )
+                }
 
                 events.append(cameraSnapshot(
                     for: scenario,
@@ -249,6 +326,8 @@ struct QuickLookStepHostView: View {
                     requestedDurationMs: action.durationMs,
                     snapshotPath: capturedSnapshot,
                     actionDurationMs: actionElapsedMs,
+                    selectionDebugEvent: selectionEvent,
+                    selectionDebugExpectationFailures: expectationFailures.isEmpty ? nil : expectationFailures,
                     scene: scene
                 ))
             }
@@ -333,25 +412,25 @@ struct QuickLookStepHostView: View {
     }
 
     @MainActor
-    private func applyTestingAction(_ action: TestingAction, to scene: SCNScene) {
+    private func applyTestingAction(_ action: TestingAction, to scene: SCNScene) -> SelectionDebugEvent? {
         guard let cameraNode = scene.rootNode.childNode(withName: "camera", recursively: true),
               let camera = cameraNode.camera
         else {
-            return
+            return nil
         }
 
         switch action.kind {
         case .rotateX:
-            guard let value = action.value else { return }
+            guard let value = action.value else { return nil }
             cameraNode.eulerAngles.x += CGFloat(value * .pi / 180.0)
         case .rotateY:
-            guard let value = action.value else { return }
+            guard let value = action.value else { return nil }
             cameraNode.eulerAngles.y += CGFloat(value * .pi / 180.0)
         case .rotateZ:
-            guard let value = action.value else { return }
+            guard let value = action.value else { return nil }
             cameraNode.eulerAngles.z += CGFloat(value * .pi / 180.0)
         case .zoom:
-            guard let value = action.value else { return }
+            guard let value = action.value else { return nil }
             let target = max(5.0, min(120.0, Double(camera.fieldOfView) + value))
             camera.fieldOfView = CGFloat(target)
         case .selectSurface:
@@ -362,9 +441,52 @@ struct QuickLookStepHostView: View {
                 result.triangleCount,
                 result.nodeName ?? "none"
             )
+        case .selectAt:
+            guard let x = action.x,
+                  let y = action.y else {
+                NSLog("Testing selectAt skipped: missing x/y")
+                return nil
+            }
+            let request = SelectionDebugSelectAtRequest(
+                x: x,
+                y: y,
+                coordinateSpace: action.coordinateSpace ?? .normalizedViewport,
+                expectation: action.expect
+            )
+            let event = SelectionDebugActionDispatcher.shared.performSelectAt?(request)
+            NSLog(
+                "Testing selectAt x=%.4f y=%.4f space=%@ result=%@ path=%@",
+                x,
+                y,
+                request.coordinateSpace.rawValue,
+                event?.resolver.finalKind ?? "none",
+                event?.eventPath ?? "none"
+            )
+            return event
+        case .setCamera:
+            if let orientationDegrees = action.orientationDegrees,
+               orientationDegrees.count >= 3 {
+                cameraNode.eulerAngles = SCNVector3(
+                    CGFloat(orientationDegrees[0] * .pi / 180.0),
+                    CGFloat(orientationDegrees[1] * .pi / 180.0),
+                    CGFloat(orientationDegrees[2] * .pi / 180.0)
+                )
+            }
+            if let position = action.cameraPosition,
+               position.count >= 3 {
+                cameraNode.position = SCNVector3(
+                    CGFloat(position[0]),
+                    CGFloat(position[1]),
+                    CGFloat(position[2])
+                )
+            }
+            if let fieldOfView = action.fieldOfView {
+                camera.fieldOfView = CGFloat(max(5.0, min(120.0, fieldOfView)))
+            }
         case .wait:
             break
         }
+        return nil
     }
 
     @MainActor
@@ -378,6 +500,8 @@ struct QuickLookStepHostView: View {
         requestedDurationMs: Double?,
         snapshotPath: String?,
         actionDurationMs: Double? = nil,
+        selectionDebugEvent: SelectionDebugEvent?,
+        selectionDebugExpectationFailures: [String]?,
         scene: SCNScene
     ) -> TestingSample {
         guard
@@ -398,7 +522,10 @@ struct QuickLookStepHostView: View {
                 fieldOfView: 0,
                 distanceFromOrigin: 0,
                 snapshotPath: snapshotPath,
-                actionDurationMs: actionDurationMs
+                actionDurationMs: actionDurationMs,
+                selectionDebugEventPath: selectionDebugEvent?.eventPath,
+                selectionDebugSummary: selectionDebugEvent?.summary,
+                selectionDebugExpectationFailures: selectionDebugExpectationFailures
             )
         }
 
@@ -416,8 +543,58 @@ struct QuickLookStepHostView: View {
             fieldOfView: Double(camera.fieldOfView),
             distanceFromOrigin: cameraNode.distanceFromOrigin(),
             snapshotPath: snapshotPath,
-            actionDurationMs: actionDurationMs
+            actionDurationMs: actionDurationMs,
+            selectionDebugEventPath: selectionDebugEvent?.eventPath,
+            selectionDebugSummary: selectionDebugEvent?.summary,
+            selectionDebugExpectationFailures: selectionDebugExpectationFailures
         )
+    }
+
+    private func selectionExpectationFailures(
+        event: SelectionDebugEvent?,
+        expectation: SelectionDebugExpectation?
+    ) -> [String] {
+        guard let expectation else {
+            return []
+        }
+        guard let event else {
+            return ["expected selection event but no event was produced"]
+        }
+
+        var failures: [String] = []
+        if let kind = expectation.kind,
+           event.resolver.finalKind != kind {
+            failures.append("kind expected \(kind), got \(event.resolver.finalKind)")
+        }
+        if let count = expectation.surfaceTriangleCount,
+           event.resolver.selectedSurfaceTriangleCount != count {
+            failures.append("surfaceTriangleCount expected \(count), got \(event.resolver.selectedSurfaceTriangleCount)")
+        }
+        if let minCount = expectation.minSurfaceTriangleCount,
+           event.resolver.selectedSurfaceTriangleCount < minCount {
+            failures.append("surfaceTriangleCount expected >= \(minCount), got \(event.resolver.selectedSurfaceTriangleCount)")
+        }
+        if let maxCount = expectation.maxSurfaceTriangleCount,
+           event.resolver.selectedSurfaceTriangleCount > maxCount {
+            failures.append("surfaceTriangleCount expected <= \(maxCount), got \(event.resolver.selectedSurfaceTriangleCount)")
+        }
+        if expectation.mustHaveRejectedAlternative == true,
+           event.resolver.rejectedAlternatives.isEmpty {
+            failures.append("expected at least one rejected alternative")
+        }
+        if let forbiddenLabels = expectation.forbiddenLabels,
+           !forbiddenLabels.isEmpty {
+            let haystack = [
+                event.resolver.finalKind,
+                event.resolver.selectedEntityID ?? "",
+                event.resolver.reason,
+            ].joined(separator: " ")
+            for label in forbiddenLabels where haystack.contains(label) {
+                failures.append("forbidden label matched: \(label)")
+            }
+        }
+
+        return failures
     }
 
     private func snapshotPath(for scenario: TestingScenario, action: String, actionIndex: Int, phase: String) -> String {
@@ -496,6 +673,16 @@ struct QuickLookStepHostView: View {
             .description
     }
 
+    private func formatDebugFloat(_ value: Float?) -> String {
+        guard let value, value.isFinite else { return "-" }
+        return String(format: "%.4f", value)
+    }
+
+    private func formatDebugDouble(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "-" }
+        return String(format: "%.3f", value)
+    }
+
     // MARK: - Loading & snapshot
     @discardableResult
     private func loadFile(_ url: URL) -> (Double, String, [String: String]) {
@@ -510,11 +697,14 @@ struct QuickLookStepHostView: View {
             let start = CFAbsoluteTimeGetCurrent()
             print("Loading file at", url.path)
             currentModelPathForProbe = url.path
+            latestSelectionDebugEvent = nil
             let loadResult = try SceneBuilder.sceneWithTrace(for: url)
+            currentLoaderMetadataForProbe = loadResult.metadata
             scene = loadResult.scene
             return ((CFAbsoluteTimeGetCurrent() - start) * 1000, loadResult.method, loadResult.metadata)
         } catch {
             scene = nil
+            currentLoaderMetadataForProbe = [:]
             loadError = error.localizedDescription
             print("Failed to load model:", error.localizedDescription)
             return (0, "failed:\(error.localizedDescription)", [:])

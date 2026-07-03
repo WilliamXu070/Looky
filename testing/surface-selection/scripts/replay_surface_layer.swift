@@ -79,15 +79,15 @@ private final class SurfaceLayerHarness {
             SIMD3<Float>(max($0.x, $1.x), max($0.y, $1.y), max($0.z, $1.z))
         }
         self.maxExtent = simd_length(maxPoint - minPoint)
-        self.weldTolerance = max(maxExtent * 0.00002, 0.01)
+        self.weldTolerance = max(maxExtent * 0.00002, 0.000001)
     }
 
     var promotionThreshold: Float {
-        max(maxExtent * 0.00008, 0.003)
+        max(maxExtent * 0.00008, 0.001)
     }
 
     var surfacePlaneTolerance: Float {
-        max(maxExtent * 0.00015, 0.004)
+        max(maxExtent * 0.00015, 0.000001)
     }
 
     func selectSurface(from hit: SIMD3<Float>) -> (promoted: Bool, selected: [Int], nearestEdgeDistance: Float) {
@@ -152,12 +152,6 @@ private final class SurfaceLayerHarness {
     private func inferredSurfaceTriangles(startingFrom seed: Int) -> [Int] {
         let smooth = smoothSurfaceTriangles(startingFrom: seed)
         guard !smooth.isEmpty else { return [] }
-        if isPlanarSurface(triangleIndices: smooth, seed: seed) {
-            let expanded = coplanarSurfaceTriangles(matching: seed)
-            if expanded.count >= smooth.count {
-                return expanded.sorted()
-            }
-        }
         return smooth.sorted()
     }
 
@@ -309,10 +303,10 @@ private func makeSplitCoplanarFixture() -> [Triangle] {
 
     let z: Float = 0
     return [
-        tri("top", SIMD3<Float>(0, 0, z), SIMD3<Float>(2, 0, z), SIMD3<Float>(0, 2, z)),
-        tri("top", SIMD3<Float>(2, 0, z), SIMD3<Float>(2, 2, z), SIMD3<Float>(0, 2, z)),
-        tri("top", SIMD3<Float>(2.05, 0, z), SIMD3<Float>(4.05, 0, z), SIMD3<Float>(2.05, 2, z)),
-        tri("top", SIMD3<Float>(4.05, 0, z), SIMD3<Float>(4.05, 2, z), SIMD3<Float>(2.05, 2, z)),
+        tri("top-left", SIMD3<Float>(0, 0, z), SIMD3<Float>(2, 0, z), SIMD3<Float>(0, 2, z)),
+        tri("top-left", SIMD3<Float>(2, 0, z), SIMD3<Float>(2, 2, z), SIMD3<Float>(0, 2, z)),
+        tri("top-right", SIMD3<Float>(2.05, 0, z), SIMD3<Float>(4.05, 0, z), SIMD3<Float>(2.05, 2, z)),
+        tri("top-right", SIMD3<Float>(4.05, 0, z), SIMD3<Float>(4.05, 2, z), SIMD3<Float>(2.05, 2, z)),
         tri("side", SIMD3<Float>(0, 0, z), SIMD3<Float>(0, 0, -1), SIMD3<Float>(2, 0, z)),
         tri("side", SIMD3<Float>(2, 0, z), SIMD3<Float>(0, 0, -1), SIMD3<Float>(2, 0, -1)),
         tri("side", SIMD3<Float>(2.05, 0, z), SIMD3<Float>(2.05, 0, -1), SIMD3<Float>(4.05, 0, z)),
@@ -337,6 +331,42 @@ private func makeOffsetPlaneFixture() -> [Triangle] {
 
 private func makeHalfCylinderFixture() -> [Triangle] {
     makeRuledSurfaceFixture(label: "cylinder", radiusAtStart: 1.0, radiusAtEnd: 1.0)
+}
+
+private func makeSmallInternalCylinderFixture() -> [Triangle] {
+    func point(_ z: Float, _ angle: Float) -> SIMD3<Float> {
+        let radius: Float = 0.00635
+        let cx: Float = 0.0254
+        let cy: Float = 0.0127
+        return SIMD3<Float>(
+            cx + radius * cosf(angle),
+            cy + radius * sinf(angle),
+            z
+        )
+    }
+
+    func tri(_ label: String, _ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>) -> Triangle {
+        Triangle(label: label, points: [a, b, c])
+    }
+
+    let segments = 64
+    let z0: Float = 0
+    let z1: Float = 0.0254
+    var triangles: [Triangle] = []
+    triangles.reserveCapacity(segments * 2)
+
+    for index in 0..<segments {
+        let a0 = Float(index) * 2 * .pi / Float(segments)
+        let a1 = Float(index + 1) * 2 * .pi / Float(segments)
+        let p00 = point(z0, a0)
+        let p10 = point(z1, a0)
+        let p01 = point(z0, a1)
+        let p11 = point(z1, a1)
+        triangles.append(tri("internal-cylinder", p00, p10, p01))
+        triangles.append(tri("internal-cylinder", p10, p11, p01))
+    }
+
+    return triangles
 }
 
 private func makeConeFixture() -> [Triangle] {
@@ -487,12 +517,12 @@ private let cases: [SurfaceTestCase] = [
         reason: "The selected surface must not leak into side triangles even with duplicated vertices."
     ),
     SurfaceTestCase(
-        name: "fragmented-coplanar-face-expands-to-all-plane-patches",
+        name: "disconnected-coplanar-island-stays-bounded",
         triangles: makeSplitCoplanarFixture(),
         hit: SIMD3<Float>(1.0, 1.0, 0.0),
         promoted: true,
-        expectedLabel: "top",
-        reason: "A fragmented flat CAD face should select all same-plane face triangles, not only the seed island."
+        expectedLabel: "top-left",
+        reason: "A same-plane mesh island separated by a real boundary gap must not be selected without adjacency evidence."
     ),
     SurfaceTestCase(
         name: "nearby-offset-plane-does-not-join-top-surface",
@@ -509,6 +539,14 @@ private let cases: [SurfaceTestCase] = [
         promoted: true,
         expectedLabel: "cylinder",
         reason: "A click on a cylindrical mesh surface should recover the full smooth cylindrical patch."
+    ),
+    SurfaceTestCase(
+        name: "small-internal-cylinder-selects-complete-curved-surface",
+        triangles: makeSmallInternalCylinderFixture(),
+        hit: SIMD3<Float>(0.03175, 0.0127, 0.0127),
+        promoted: true,
+        expectedLabel: "internal-cylinder",
+        reason: "A cube-hole-scale internal cylinder must not fragment under absolute weld tolerances."
     ),
     SurfaceTestCase(
         name: "tapered-cone-selects-complete-curved-surface",
@@ -530,7 +568,8 @@ private let report = Report(
         "This validates the surface layer in isolation, before GUI click automation.",
         "The fixture duplicates triangle vertices, matching STEP-style tessellation where vertex-ID adjacency can fail.",
         "Inferred surface traversal may cross smooth/non-feature edges but must stop at boundary or crease feature edges.",
-        "Planar surfaces expand across same-plane mesh islands; curved surfaces use smooth patch growth for cylindrical/conical-style meshes.",
+        "Planar and curved surfaces stay bounded to welded smooth patches; disconnected same-plane islands require real adjacency evidence.",
+        "The small internal-cylinder case guards against absolute tolerance floors that are larger than the repo cube-hole radius.",
     ],
     results: results
 )

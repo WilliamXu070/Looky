@@ -70,3 +70,71 @@ Do not call the live surface issue fixed until a probe click either resolves to 
 ### Validation
 - `testing/edge-shape-detection/scripts/replay_surface_invariance.sh`
 - For live probe pairs: `testing/edge-shape-detection/scripts/replay_surface_invariance.sh /path/to/top-edge-download.json /path/to/side-edge-download.json`
+
+## 2026-07-03 Update
+
+### Problem context
+- Manual GUI clicks during surface probing can appear to do nothing if QuickLookStep is not frontmost, and repeated clicks within the same second can overwrite the same `surface-probe-*.json` filename.
+
+### What changed
+- Added this probing caveat: before automated coordinate clicks, force QuickLookStep frontmost and clear the probe directory before the single click under test.
+
+### Why it helped
+- Prevents confusing stale probe reads with current click results.
+- Makes it clear when a click actually hit the app versus when focus stayed in Codex or another foreground app.
+
+### Validation
+- Run:
+  - `rm -f /tmp/quicklook-surface-probe/*.json`
+  - `osascript -e 'tell application "QuickLookStep" to activate' -e 'tell application "System Events" to tell application process "QuickLookStep" to set frontmost to true'`
+  - click once
+  - `ls -lt /tmp/quicklook-surface-probe | head`
+
+## 2026-07-03 Update
+
+### Problem context
+- Surface probes and automated camera snapshots were separate, so a bad manual click did not produce one replayable artifact with the click, camera, resolver decision, screenshots, and expectation.
+
+### What changed
+- Added the consolidated selection-debug workflow: launch with `--selection-debug --selection-debug-hud=1 --selection-debug-output /tmp/quicklook-selection-debug`, inspect `selection-debug-session.json`, replay with `testing/selection-debug/replay_selection_session.swift`, and promote one event with `testing/selection-debug/promote_debug_event.py`.
+
+### Why it helped
+- One click now explains the final kind, seed triangle, surface/edge candidate counts, nearest feature-edge distance, thresholds, render bounds, clipping/disconnected warnings, and before/after screenshots.
+- Captured bad clicks can become `selectAt` golden plans instead of one-off manual notes.
+
+### Validation
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 QLS_SELECTION_DEBUG_OUTPUT=/tmp/quicklook-selection-debug testing/scripts/run-testing.sh testing/plans/selection-debug-cube-hole.json testing/results/selection-debug-cube-hole.json`
+- `swift testing/selection-debug/replay_selection_session.swift /tmp/quicklook-selection-debug/selection-debug-session.json testing/results/selection-debug-cube-hole-replay.json`
+- Manual HUD check: launch with `--selection-debug --selection-debug-hud=1`, click the suspect region, then confirm `selection-debug-session.json` plus `screenshots/*-before.png` and `screenshots/*-after.png` exist.
+
+## 2026-07-03 Update
+
+### Problem context
+- A selection-debug log pull found two probe-quality pitfalls: automated `selectAt` could use a drifted live `SCNView.pointOfView`, and a real `mouseUp` could write an extra event after automated output was complete.
+
+### What changed
+- Added this probe sanity rule: when using selection-debug sessions for regression evidence, confirm event count matches the intended clicks and compare `event.camera.position` across events before diagnosing the resolver.
+- Prefer `selectAt` goldens with enforced expectations for repeatable surface bugs; use manual HUD/probe clicks for discovery, then promote the captured event.
+
+### Why it helped
+- Prevents treating harness noise as a surface-selection bug.
+- Makes it clear whether a wrong/blank selection was caused by camera state, click routing, or the actual surface resolver.
+
+### Validation
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 QLS_SELECTION_DEBUG_OUTPUT=/tmp/quicklook-selection-debug-fixed testing/scripts/run-testing.sh testing/plans/selection-debug-cube-hole.json testing/results/selection-debug-fixed.json`
+- Inspect `/tmp/quicklook-selection-debug-fixed/selection-debug-session.json`: planned cube-hole debug runs should have 4 events, stable camera positions, and no `selectionDebugExpectationFailures` in the test result JSON.
+
+## 2026-07-03 Update
+
+### Problem context
+- Live selection-debug recording snapped back to the default camera after clicks or HUD updates, and camera drags could be recorded as selection clicks.
+
+### What changed
+- Updated the live-recorder guidance: preserve the active `SCNView.pointOfView` unless the scene changes, and treat mouse drags over a small threshold as camera movement instead of selection events.
+
+### Why it helped
+- Manual probes can orbit/pan the viewer between clicks without losing camera state or polluting `selection-debug-session.json` with drag-release events.
+
+### Validation
+- Launch with `open -n -a build/Build/Products/Debug/QuickLookStep.app --args --selection-debug --selection-debug-hud=1 --selection-debug-output /tmp/quicklook-live-recorder --sample /Users/williamxu/Desktop/Projects/quicklook/testing/input/cube_hole.step`.
+- Drag/orbit the model, then inspect `/tmp/quicklook-live-recorder/selection-debug-session.json`: drags should not add events, and subsequent click events should keep the moved camera position.

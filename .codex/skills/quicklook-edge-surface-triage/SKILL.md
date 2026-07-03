@@ -184,6 +184,27 @@ testing/scripts/verify_quicklook_ui_launch.sh
 - `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`
 - After merging probe script fixes, rerun `testing/surface-selection/scripts/run_visible_surface_overlay_test.sh`.
 
+## 2026-07-03 Update
+
+### Problem context
+- Cube-hole center/inner-cylinder behavior was still inconsistent: clicks near the hole could resolve to planar faces or fragmented curved patches because the selection topology used absolute tolerance floors larger than the model's small features.
+
+### What changed
+- Tightened `SelectionModel` weld/coplanar tolerance floors to `0.000001`.
+- Replaced global coplanar expansion with bounded welded smooth patches.
+- Changed the live edge prefilter from `maxExtent * 0.018` with a `0.35` floor to `maxExtent * 0.03` with a `0.0005` floor, preserving rounded-edge goldens while avoiding whole-model edge auto-aim on tiny parts.
+
+### Why it helped
+- The repo cube-hole OBJ now classifies the internal cylinder as one 126-triangle smooth component while keeping front/back planar faces at 67 triangles each.
+- Surface selection no longer relies on a same-plane sweep that can make selected regions look non-finite or disconnected from the clicked face.
+
+### Validation
+- `testing/surface-selection/scripts/run_surface_layer_test.sh`
+- `swift testing/selection-engine/scripts/replay_selection_engine.swift testing/selection-engine/reports/latest.json`
+- `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- `testing/surface-selection/scripts/run_visible_surface_overlay_test.sh`
+
 ## 2026-07-02 Update
 
 ### Problem context
@@ -231,3 +252,59 @@ testing/scripts/verify_quicklook_ui_launch.sh
 - `testing/selection-engine/run_selection_engine_tests.sh`
 - `testing/surface-selection/scripts/run_surface_layer_test.sh`
 - `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`
+
+## 2026-07-03 Update
+
+### Problem context
+- Internal cylinder wall clicks in the cube-hole STEP fixture still do not select the complete cylindrical surface.
+- The current selection model uses absolute minimums (`0.01` weld tolerance and `0.35` edge-selection threshold) that are larger than or comparable to small meter-scale STEP features.
+
+### What changed
+- Added the internal-cylinder diagnosis: avoid trusting the synthetic half-cylinder result as proof for small concave hole surfaces; check actual model scale, welded bucket sizes, and edge-candidate thresholds.
+
+### Why it helped
+- Identifies why the resolver can fragment the cylinder wall, mark too many internal edges as feature edges, or let an edge steal a cylinder-wall click.
+- Establishes that the next fix should scale tolerances to the model/feature size and add a repo cube-hole internal-cylinder golden flow.
+
+### Validation
+- For `testing/input/cube_hole_from_step.obj`, tolerance `0.01` creates oversized welded buckets and splits the likely cylinder triangles; a tolerance near `maxExtent * 0.00002` keeps bucket size near 2 and groups the cylinder wall as one patch.
+- Inspect `SceneKitView.localSelectionDistanceThreshold`: the `0.35` floor is larger than the whole cube-hole model and should not be used as a model-space near-edge threshold for this fixture.
+
+## 2026-07-03 Update
+
+### Problem context
+- Undefined-looking selections needed structured proof of whether the click chose an edge, a finite surface patch, no hit, or a disconnected/clipped surface highlight.
+
+### What changed
+- Added `SelectionDebugEvent` sessions, HUD summaries, `TestingActionKind.selectAt`, `TestingActionKind.setCamera`, replay tooling, and a cube-hole selection-debug golden plan.
+- Render validation now records selected bounds, triangle/edge counts, material depth state, and warnings such as `selected surface triangles disconnected from seed`.
+
+### Why it helped
+- Edge/surface triage can now compare the live resolver decision, rejected alternatives, thresholds, and visual artifact paths in one JSON bundle.
+- The 67-triangle cube-hole surface capture is now replayable and exposes the disconnected-surface warning instead of relying on a screenshot alone.
+
+### Validation
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 QLS_SELECTION_DEBUG_OUTPUT=/tmp/quicklook-selection-debug testing/scripts/run-testing.sh testing/plans/selection-debug-cube-hole.json testing/results/selection-debug-cube-hole.json`
+- `swift testing/selection-debug/replay_selection_session.swift /tmp/quicklook-selection-debug/selection-debug-session.json testing/results/selection-debug-cube-hole-replay.json`
+- `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app /Users/williamxu/Desktop/Projects/quicklook/testing/input/cube_hole.step /tmp/quicklook-ui-launch-check-cube.png`
+
+## 2026-07-03 Update
+
+### Problem context
+- Log replay showed intermittent `selectAt` failures where the test report camera stayed fixed, but the live `SCNView.pointOfView` drifted and the same normalized click returned `none`.
+- The same runs also showed that `expect` data was recorded without failing `run-testing.sh`, and a stray manual `mouseUp` could append an extra debug event after the test report was written.
+
+### What changed
+- Added the validation rule: automated `selectAt` must sync `SCNView.pointOfView` from the scene camera before clicking, `run-testing.sh` must fail on `selectionDebugExpectationFailures`, and test-plan launches should suppress manual mouse selection while still allowing explicit `selectAt`.
+- Added a session sanity check: event count must match planned `selectAt` count, and all event camera positions should match the camera restored/reported by the plan unless the plan intentionally moves it.
+
+### Why it helped
+- Makes click goldens deterministic and prevents false-green reports where the JSON captures a failed expectation but the script exits 0.
+- Separates real resolver warnings, such as `selected surface triangles disconnected from seed`, from harness noise caused by camera drift or stray mouse events.
+
+### Validation
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 QLS_SELECTION_DEBUG_OUTPUT=/tmp/quicklook-selection-debug-fixed-2 testing/scripts/run-testing.sh testing/plans/selection-debug-cube-hole.json testing/results/selection-debug-fixed-2.json`
+- `swift testing/selection-debug/replay_selection_session.swift /tmp/quicklook-selection-debug-fixed-2/selection-debug-session.json testing/results/selection-debug-fixed-2-replay.json`
+- Repeat the direct run once and confirm `selection-debug-session.json` has exactly 4 events, no expectation failures, and stable camera positions.

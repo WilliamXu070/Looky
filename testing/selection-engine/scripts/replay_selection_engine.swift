@@ -214,19 +214,19 @@ private final class SelectionEngineHarness {
             SIMD3<Float>(max($0.x, $1.x), max($0.y, $1.y), max($0.z, $1.z))
         }
         self.maxExtent = simd_length(maxPoint - minPoint)
-        self.weldTolerance = max(maxExtent * 0.00002, 0.01)
+        self.weldTolerance = max(maxExtent * 0.00002, 0.000001)
     }
 
     var edgeSelectionThreshold: Float {
-        max(maxExtent * 0.018, 0.35)
+        max(maxExtent * 0.03, 0.0005)
     }
 
     var surfacePromotionThreshold: Float {
-        max(maxExtent * 0.00008, 0.003)
+        max(maxExtent * 0.00008, 0.001)
     }
 
     var surfacePlaneTolerance: Float {
-        max(maxExtent * 0.00015, 0.004)
+        max(maxExtent * 0.00015, 0.000001)
     }
 
     var hitDistanceThreshold: Float {
@@ -403,12 +403,6 @@ private final class SelectionEngineHarness {
         let smooth = smoothSurfaceTriangles(startingFrom: seed)
         guard !smooth.isEmpty else {
             return []
-        }
-        if isPlanarSurface(triangleIndices: smooth, seed: seed) {
-            let expanded = coplanarSurfaceTriangles(matching: seed)
-            if expanded.count >= smooth.count {
-                return expanded.sorted()
-            }
         }
         return smooth.sorted()
     }
@@ -676,6 +670,42 @@ private func makeCylinderFixture() -> SelectionFixture {
     return SelectionFixture(name: "half-cylinder", triangles: triangles)
 }
 
+private func makeSmallInternalCylinderFixture() -> SelectionFixture {
+    func point(_ z: Float, _ angle: Float) -> SIMD3<Float> {
+        let radius: Float = 0.00635
+        let cx: Float = 0.0254
+        let cy: Float = 0.0127
+        return SIMD3<Float>(
+            cx + radius * cosf(angle),
+            cy + radius * sinf(angle),
+            z
+        )
+    }
+
+    func tri(_ label: String, _ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>) -> Triangle {
+        Triangle(label: label, points: [a, b, c])
+    }
+
+    let segments = 64
+    let z0: Float = 0
+    let z1: Float = 0.0254
+    var triangles: [Triangle] = []
+    triangles.reserveCapacity(segments * 2)
+
+    for index in 0..<segments {
+        let a0 = Float(index) * 2 * .pi / Float(segments)
+        let a1 = Float(index + 1) * 2 * .pi / Float(segments)
+        let p00 = point(z0, a0)
+        let p10 = point(z1, a0)
+        let p01 = point(z0, a1)
+        let p11 = point(z1, a1)
+        triangles.append(tri("internal-cylinder", p00, p10, p01))
+        triangles.append(tri("internal-cylinder", p10, p11, p01))
+    }
+
+    return SelectionFixture(name: "small-internal-cylinder", triangles: triangles)
+}
+
 private func makeRoundedLoopFixture() -> SelectionFixture {
     func tri(_ label: String, _ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>) -> Triangle {
         Triangle(label: label, points: [a, b, c])
@@ -940,6 +970,7 @@ private extension SIMD3 where Scalar == Float {
 private let plate = makePlateFixture()
 private let offsetPlane = makeOffsetPlaneFixture()
 private let cylinder = makeCylinderFixture()
+private let smallInternalCylinder = makeSmallInternalCylinderFixture()
 private let roundedLoop = makeRoundedLoopFixture()
 
 private let cases: [SelectionTestCase] = [
@@ -975,6 +1006,13 @@ private let cases: [SelectionTestCase] = [
         hit: SIMD3<Float>(2.0, 0.0, 1.0),
         expected: ExpectedSelection(kind: .surface, surfaceID: "cylinder", exactTriangleCount: 24),
         reason: "A smooth cylindrical patch should select the full curved surface, not one triangle island."
+    ),
+    SelectionTestCase(
+        name: "small-internal-cylinder-resolves-complete-surface",
+        fixture: smallInternalCylinder,
+        hit: SIMD3<Float>(0.03175, 0.0127, 0.0127),
+        expected: ExpectedSelection(kind: .surface, surfaceID: "internal-cylinder", exactTriangleCount: 128),
+        reason: "A cube-hole-scale internal cylinder should not fragment under absolute tolerance floors."
     ),
     SelectionTestCase(
         name: "far-blank-click-resolves-none",
@@ -1024,7 +1062,7 @@ private let reportPayload = Report(
         "No geometry hit resolves to none; it must not jump to the nearest distant feature.",
         "Creased feature edges inside the local edge threshold resolve as edge before surface.",
         "Face clicks outside the local edge gate promote to bounded surface patches.",
-        "Planar patches may merge across same-plane islands but not nearby offset planes.",
+        "Surface patches require welded smooth adjacency; same-plane islands are not joined without adjacency evidence.",
         "Smooth cylindrical-style patches select as complete curved surfaces.",
         "The same rounded feature selected from adjacent surfaces keeps a stable loop ID.",
     ],

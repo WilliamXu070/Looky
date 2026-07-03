@@ -108,4 +108,38 @@ if ! launch; then
 fi
 
 wait_for_output "$OUTPUT"
+
+python3 - "$OUTPUT" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path) as f:
+    data = json.load(f)
+
+failures = []
+for report in data.get("reports", []):
+    scenario = report.get("scenario", "<unknown>")
+    for event in report.get("events", []):
+        event_failures = event.get("selectionDebugExpectationFailures") or []
+        if event_failures:
+            failures.append(
+                (
+                    scenario,
+                    event.get("actionIndex"),
+                    event.get("action"),
+                    event_failures,
+                    (event.get("selectionDebugSummary") or {}).get("eventPath"),
+                )
+            )
+
+if failures:
+    print("Selection debug expectation failure(s):", file=sys.stderr)
+    for scenario, index, action, event_failures, event_path in failures:
+        print(f"  - {scenario} action {index} {action}: {'; '.join(event_failures)}", file=sys.stderr)
+        if event_path:
+            print(f"    event: {event_path}", file=sys.stderr)
+    sys.exit(1)
+PY
+
 echo "Wrote test results to: $OUTPUT"

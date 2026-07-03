@@ -61,3 +61,19 @@ If the process exists but the top visible window is not `QuickLookStep`, the UI 
 - `QLS_FORCE_DIRECT_LAUNCH=1 testing/scripts/run-testing.sh testing/plans/orientation-zoom.json testing/results/diagnosis-orientation-zoom-direct.json`
 - `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app /Users/williamxu/Desktop/Projects/quicklook/testing/input/cube_hole.step /tmp/quicklook-ui-launch-check-cube.png`
 - Check `/tmp/quicklookstep-lifecycle.log` and top-window output before claiming the UI launch verifier passed.
+
+## 2026-07-03 Update
+
+### Problem context
+- Unified macOS logs during selection-debug runs can include AppIntents/linkd connection failures, SwiftUI scene-configuration warnings, `CAMetalLayer` 0x0 drawable-size messages, missing MAS receipt messages, and TCC accessibility warnings.
+
+### What changed
+- Added the triage rule: treat those as launch/system noise unless the process fails to open a real QuickLookStep window or the direct test JSON/log stream reports a selection/test failure.
+- Prefer captured process stdout/stderr and selection-debug session JSON when diagnosing viewer selection bugs.
+
+### Why it helped
+- Avoids chasing unrelated OS launch noise while still preserving the UI launch verifier as the source of truth for visible-window health.
+
+### Validation
+- `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app /Users/williamxu/Desktop/Projects/quicklook/testing/input/cube_hole.step /tmp/quicklook-ui-launch-check-cube.png`
+- For selection-debug failures, inspect `testing/results/<run>.log` and `/tmp/quicklook-selection-debug*/selection-debug-session.json` before using broad `log show` output.

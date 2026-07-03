@@ -7,9 +7,9 @@ struct SelectionModelSettings: Equatable {
     var smoothSurfaceBoundaryDegrees: Float = 65.0
     var planarSurfaceDegrees: Float = 7.0
     var weldedVertexToleranceScale: Float = 0.00002
-    var weldedVertexToleranceMinimum: Float = 0.01
+    var weldedVertexToleranceMinimum: Float = 0.000001
     var coplanarToleranceScale: Float = 0.00015
-    var coplanarToleranceMinimum: Float = 0.004
+    var coplanarToleranceMinimum: Float = 0.000001
 }
 
 struct SelectionModel {
@@ -296,13 +296,6 @@ struct SelectionModel {
         let smoothPatch = smoothSurfacePatchTriangleIDs(startingFrom: seedTriangleID)
         guard !smoothPatch.isEmpty else {
             return []
-        }
-
-        if isPlanarSurface(triangleIDs: smoothPatch, seedTriangleID: seedTriangleID) {
-            let expanded = coplanarSurfaceTriangleIDs(matching: seedTriangleID)
-            if expanded.count >= smoothPatch.count {
-                return expanded
-            }
         }
 
         return smoothPatch

@@ -37,6 +37,11 @@ struct SceneKitView: NSViewRepresentable {
     var edgeDownloadOutputDirectory: String = "/tmp/quicklook-edge-download"
     var onSelectionResult: ((EdgeSelectionDownload?) -> Void)?
     var edgeOnlyMode: Bool = false
+    var selectionDebugMode: Bool = false
+    var selectionDebugOutputDirectory: String = "/tmp/quicklook-selection-debug"
+    var loaderMetadata: [String: String] = [:]
+    var onSelectionDebugEvent: ((SelectionDebugEvent) -> Void)?
+    var manualSelectionEnabled: Bool = true
 
     func makeNSView(context: Context) -> SCNView {
         let scnView = DebugSelectableSCNView()
@@ -51,6 +56,14 @@ struct SceneKitView: NSViewRepresentable {
         scnView.edgeDownloadOutputDirectory = edgeDownloadOutputDirectory
         scnView.onSelectionResult = onSelectionResult
         scnView.edgeOnlyMode = edgeOnlyMode
+        scnView.selectionDebugMode = selectionDebugMode
+        scnView.selectionDebugOutputDirectory = selectionDebugOutputDirectory
+        scnView.loaderMetadata = loaderMetadata
+        scnView.onSelectionDebugEvent = onSelectionDebugEvent
+        scnView.manualSelectionEnabled = manualSelectionEnabled
+        SelectionDebugActionDispatcher.shared.performSelectAt = { [weak scnView] request in
+            scnView?.performDebugSelectAt(request)
+        }
         scnView.allowsCameraControl = true
         scnView.autoresizingMask = [.width, .height]
         scnView.backgroundColor = .clear
@@ -73,8 +86,10 @@ struct SceneKitView: NSViewRepresentable {
             sceneChanged = true
         }
 
-        nsView.scene = scene
-        nsView.pointOfView = scene?.rootNode.childNode(withName: "camera", recursively: true)
+        if sceneChanged {
+            nsView.scene = scene
+            nsView.pointOfView = scene?.rootNode.childNode(withName: "camera", recursively: true)
+        }
         if let selectableView = nsView as? DebugSelectableSCNView {
             if sceneChanged {
                 selectableView.invalidateSelectionCaches()
@@ -89,6 +104,14 @@ struct SceneKitView: NSViewRepresentable {
             selectableView.edgeDownloadOutputDirectory = edgeDownloadOutputDirectory
             selectableView.onSelectionResult = onSelectionResult
             selectableView.edgeOnlyMode = edgeOnlyMode
+            selectableView.selectionDebugMode = selectionDebugMode
+            selectableView.selectionDebugOutputDirectory = selectionDebugOutputDirectory
+            selectableView.loaderMetadata = loaderMetadata
+            selectableView.onSelectionDebugEvent = onSelectionDebugEvent
+            selectableView.manualSelectionEnabled = manualSelectionEnabled
+            SelectionDebugActionDispatcher.shared.performSelectAt = { [weak selectableView] request in
+                selectableView?.performDebugSelectAt(request)
+            }
         }
     }
 }
@@ -98,7 +121,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
     private let highlightStrokePixelRadius: CGFloat = 2.2
     private let highlightEndpointPixelRadius: CGFloat = 5.0
     private let edgeSelectionRadiusViewportFraction: Float = 0.0016
-    private let edgeSelectionRadiusWorldMin: Float = 0.01
+    private let edgeSelectionRadiusWorldMin: Float = 0.0005
     private let edgeSelectionRadiusWorldMax: Float = 0.45
     private var screenStableHighlightNodes: [ScreenStableHighlightNode] = []
     var edgeFitSettings = EdgeFitSettings()
@@ -111,10 +134,18 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
     var edgeDownloadOutputDirectory = "/tmp/quicklook-edge-download"
     var onSelectionResult: ((EdgeSelectionDownload?) -> Void)?
     var edgeOnlyMode = false
+    var selectionDebugMode = false
+    var selectionDebugOutputDirectory = "/tmp/quicklook-selection-debug"
+    var loaderMetadata: [String: String] = [:]
+    var onSelectionDebugEvent: ((SelectionDebugEvent) -> Void)?
+    var manualSelectionEnabled = true
     private var surfaceGeometryRestores: [(node: SCNNode, geometry: SCNGeometry)] = []
     private var selectionModelCache: [ObjectIdentifier: SelectionModel] = [:]
     private var meshTopologyCache: [ObjectIdentifier: MeshTopology] = [:]
     private var cachedMeshSettings = EdgeFitSettings()
+    private var mouseDownPoint: CGPoint?
+    private var mouseDraggedPastSelectionThreshold = false
+    private let cameraDragSelectionThreshold: CGFloat = 4
 
     private struct ScreenStableHighlightNode {
         let node: SCNNode
@@ -128,10 +159,76 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         case uniform
     }
 
+    override func mouseDown(with event: NSEvent) {
+        mouseDownPoint = convert(event.locationInWindow, from: nil)
+        mouseDraggedPastSelectionThreshold = false
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if let mouseDownPoint {
+            let point = convert(event.locationInWindow, from: nil)
+            let distance = hypot(point.x - mouseDownPoint.x, point.y - mouseDownPoint.y)
+            if distance > cameraDragSelectionThreshold {
+                mouseDraggedPastSelectionThreshold = true
+            }
+        }
+        super.mouseDragged(with: event)
+    }
+
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        drawDebugSelection(at: point, event: event)
+        let releaseDistance = mouseDownPoint.map {
+            hypot(point.x - $0.x, point.y - $0.y)
+        } ?? 0
+
+        guard manualSelectionEnabled else {
+            super.mouseUp(with: event)
+            mouseDownPoint = nil
+            mouseDraggedPastSelectionThreshold = false
+            return
+        }
+
+        guard mouseDraggedPastSelectionThreshold == false,
+              releaseDistance <= cameraDragSelectionThreshold else {
+            super.mouseUp(with: event)
+            mouseDownPoint = nil
+            mouseDraggedPastSelectionThreshold = false
+            return
+        }
+
+        _ = drawDebugSelection(at: point, event: event)
         super.mouseUp(with: event)
+        mouseDownPoint = nil
+        mouseDraggedPastSelectionThreshold = false
+    }
+
+    func performDebugSelectAt(_ request: SelectionDebugSelectAtRequest) -> SelectionDebugEvent? {
+        guard bounds.width > 1, bounds.height > 1 else {
+            return nil
+        }
+
+        if let sceneCamera = scene?.rootNode.childNode(withName: "camera", recursively: true) {
+            pointOfView = sceneCamera
+        }
+
+        let point: CGPoint
+        switch request.coordinateSpace {
+        case .normalizedViewport:
+            point = CGPoint(
+                x: CGFloat(request.x) * bounds.width,
+                y: CGFloat(request.y) * bounds.height
+            )
+        case .viewport:
+            point = CGPoint(x: CGFloat(request.x), y: CGFloat(request.y))
+        }
+
+        return drawDebugSelection(
+            at: point,
+            event: nil,
+            expectation: request.expectation,
+            forceDebugEvent: true
+        )
     }
 
     func renderer(_ renderer: any SCNSceneRenderer, updateAtTime time: TimeInterval) {
@@ -173,11 +270,23 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         return mesh
     }
 
-    private func drawDebugSelection(at point: CGPoint, event: NSEvent? = nil) {
+    @discardableResult
+    private func drawDebugSelection(
+        at point: CGPoint,
+        event: NSEvent? = nil,
+        expectation: SelectionDebugExpectation? = nil,
+        forceDebugEvent: Bool = false
+    ) -> SelectionDebugEvent? {
         let selectionStart = CFAbsoluteTimeGetCurrent()
+        let shouldWriteDebugEvent = selectionDebugMode || forceDebugEvent
+        let beforeImage = shouldWriteDebugEvent ? snapshot() : nil
         guard let scene else {
-            return
+            return nil
         }
+
+        // Start every input transaction from a clean state so previous surface overlays
+        // do not affect the next click's ray-cast or candidate topology.
+        clearDebugSelection(from: scene)
 
         guard let selectionResult = resolveSelection(at: point) else {
             if surfaceProbeMode {
@@ -190,8 +299,17 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 )
             }
             let elapsedMs = (CFAbsoluteTimeGetCurrent() - selectionStart) * 1000
+            let pendingDebugEvent = makeSelectionDebugEventIfNeeded(
+                at: point,
+                event: event,
+                resolvedSelection: nil,
+                elapsedMs: elapsedMs,
+                expectation: expectation,
+                forceDebugEvent: forceDebugEvent
+            )
+            let debugEvent = writeSelectionDebugEvent(pendingDebugEvent, beforeImage: beforeImage)
             NSLog("Selection ignored: no nearby downloadable edge or surface elapsedMs=%.2f", elapsedMs)
-            return
+            return debugEvent
         }
 
         if surfaceProbeMode {
@@ -203,6 +321,16 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 )
             )
         }
+
+        let resolvedElapsedMs = (CFAbsoluteTimeGetCurrent() - selectionStart) * 1000
+        let pendingDebugEvent = makeSelectionDebugEventIfNeeded(
+            at: point,
+            event: event,
+            resolvedSelection: selectionResult,
+            elapsedMs: resolvedElapsedMs,
+            expectation: expectation,
+            forceDebugEvent: forceDebugEvent
+        )
 
         switch selectionResult {
         case .surface(let hit, let surfaceSelection):
@@ -220,6 +348,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 selectionStart: selectionStart
             )
         }
+
+        return writeSelectionDebugEvent(pendingDebugEvent, beforeImage: beforeImage)
     }
 
     private func drawEdgeSelection(
@@ -398,6 +528,445 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             surfaceSelection.edgePromotionThreshold,
             elapsedMs
         )
+    }
+
+    private func makeSelectionDebugEventIfNeeded(
+        at point: CGPoint,
+        event: NSEvent?,
+        resolvedSelection: ResolvedSelection?,
+        elapsedMs: Double,
+        expectation: SelectionDebugExpectation?,
+        forceDebugEvent: Bool
+    ) -> SelectionDebugEvent? {
+        guard selectionDebugMode || forceDebugEvent else {
+            return nil
+        }
+
+        return makeSelectionDebugEvent(
+            at: point,
+            event: event,
+            resolvedSelection: resolvedSelection,
+            elapsedMs: elapsedMs,
+            expectation: expectation
+        )
+    }
+
+    private func writeSelectionDebugEvent(
+        _ event: SelectionDebugEvent?,
+        beforeImage: NSImage?
+    ) -> SelectionDebugEvent? {
+        guard let event else {
+            return nil
+        }
+
+        let afterImage = snapshot()
+        do {
+            let result = try SelectionDebugSessionWriter(
+                outputDirectory: selectionDebugOutputDirectory
+            ).write(
+                event: event,
+                beforeImage: beforeImage,
+                afterImage: afterImage
+            )
+            onSelectionDebugEvent?(result.event)
+            NSLog(
+                "Selection debug event saved: %@ kind=%@ reason=%@",
+                result.eventPath,
+                result.event.resolver.finalKind,
+                result.event.resolver.reason
+            )
+            return result.event
+        } catch {
+            NSLog(
+                "Failed writing selection debug event to %@: %@",
+                selectionDebugOutputDirectory,
+                error.localizedDescription
+            )
+            onSelectionDebugEvent?(event)
+            return event
+        }
+    }
+
+    private func makeSelectionDebugEvent(
+        at point: CGPoint,
+        event: NSEvent?,
+        resolvedSelection: ResolvedSelection?,
+        elapsedMs: Double,
+        expectation: SelectionDebugExpectation?
+    ) -> SelectionDebugEvent {
+        let probe = makeSurfaceProbeRecord(
+            at: point,
+            event: event,
+            resolvedSelection: resolvedSelection
+        )
+        let selectedEdgePointCount: Int
+        let selectedSurfaceTriangleCount: Int
+        let selectedEntityID: String?
+        let seedTriangle: Int?
+
+        switch resolvedSelection {
+        case .surface(let hit, let surfaceSelection):
+            selectedEdgePointCount = 0
+            selectedSurfaceTriangleCount = surfaceSelection.triangleIndices.count
+            seedTriangle = surfaceSelection.seedTriangle
+            if let geometry = hit.node.geometry,
+               let selectionModel = selectionModel(for: geometry),
+               let patchID = selectionModel.surfacePatchID(forTriangle: SelectionTriangleID(rawValue: surfaceSelection.seedTriangle)) {
+                selectedEntityID = "surfacePatch:\(patchID.rawValue)"
+            } else {
+                selectedEntityID = "surfaceSeed:\(surfaceSelection.seedTriangle)"
+            }
+        case .edge(_, let edgeSelection):
+            selectedEdgePointCount = edgeSelection.chainWorldPoints.count
+            selectedSurfaceTriangleCount = 0
+            seedTriangle = edgeSelection.edgeSnap.selectedTriangle
+            selectedEntityID = "edge:\(edgeSelection.edgeSnap.selectedEdge.a)-\(edgeSelection.edgeSnap.selectedEdge.b)"
+        case nil:
+            selectedEdgePointCount = 0
+            selectedSurfaceTriangleCount = 0
+            seedTriangle = probe.seedTriangle
+            selectedEntityID = nil
+        }
+
+        let finalKind = probe.resolvedKind
+        let reason = selectionDebugReason(
+            finalKind: finalKind,
+            selectedSurfaceTriangleCount: selectedSurfaceTriangleCount,
+            selectedEdgePointCount: selectedEdgePointCount,
+            probe: probe
+        )
+        let render = selectionDebugRenderValidation(for: resolvedSelection)
+        let modelHint = edgeProbeModelHint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeModelHint = modelHint.isEmpty ? "unknown-model" : modelHint
+
+        return SelectionDebugEvent(
+            eventID: selectionDebugEventID(),
+            producedAt: ISO8601DateFormatter().string(from: Date()),
+            modelHint: safeModelHint,
+            modelHash: selectionDebugFileHash(path: safeModelHint),
+            loaderMetadata: loaderMetadata.isEmpty ? nil : loaderMetadata,
+            camera: selectionDebugCameraState(),
+            input: SelectionDebugInput(
+                windowPoint: event.map { [Double($0.locationInWindow.x), Double($0.locationInWindow.y)] },
+                viewportPoint: [Double(point.x), Double(point.y)],
+                normalizedViewportPoint: normalizedViewportPoint(point),
+                modifierFlags: probe.modifierFlags,
+                selectionMode: edgeSelectionMode.rawValue,
+                edgeOnlyMode: edgeOnlyMode
+            ),
+            hitTest: SelectionDebugHitTest(
+                viewSize: [Float(bounds.width), Float(bounds.height)],
+                sceneNodeName: probe.sceneNodeName,
+                hitLocalPoint: probe.hitLocalPoint,
+                hitWorldPoint: probe.hitWorldPoint,
+                hitLocalNormal: probe.hitLocalNormal,
+                hitWorldNormal: probe.hitWorldNormal,
+                seedTriangle: probe.seedTriangle,
+                hitDistance: hitDistanceFromCamera(hitWorldPoint: probe.hitWorldPoint),
+                noHitReason: probe.sceneNodeName == nil ? probe.note : nil
+            ),
+            resolver: SelectionDebugResolver(
+                finalKind: finalKind,
+                selectedEntityID: selectedEntityID,
+                selectedSurfaceTriangleCount: selectedSurfaceTriangleCount,
+                selectedEdgePointCount: selectedEdgePointCount,
+                seedTriangle: seedTriangle,
+                nearestFeatureEdgeDistance: probe.nearestFeatureEdgeDistance,
+                surfacePromotionThreshold: probe.surfacePromotionThreshold,
+                edgeCandidateCount: probe.edgeCandidateCount,
+                bestEdgeDistance: probe.bestEdgeDistance,
+                bestEdgeIsFeature: probe.bestEdgeIsFeature,
+                bestEdgeCurrentPointIsEdge: probe.bestEdgeCurrentPointIsEdge,
+                bestEdgeChainKind: probe.bestEdgeChainKind,
+                rejectedAlternatives: selectionDebugRejectedAlternatives(finalKind: finalKind, probe: probe),
+                elapsedMs: elapsedMs,
+                reason: reason
+            ),
+            render: render,
+            expectation: expectation,
+            expectedKind: expectation?.kind,
+            expectedSurfaceLabel: nil,
+            note: nil,
+            eventPath: nil,
+            sessionPath: nil,
+            beforeScreenshotPath: nil,
+            afterScreenshotPath: nil
+        )
+    }
+
+    private func selectionDebugReason(
+        finalKind: String,
+        selectedSurfaceTriangleCount: Int,
+        selectedEdgePointCount: Int,
+        probe: SurfaceProbeRecord
+    ) -> String {
+        switch finalKind {
+        case "surface":
+            return "surface selected: \(selectedSurfaceTriangleCount) triangles"
+        case "edge":
+            if probe.surfaceTriangleCount > 0,
+               let nearest = probe.nearestFeatureEdgeDistance,
+               let threshold = probe.surfacePromotionThreshold,
+               nearest <= threshold {
+                return "edge selected: surface rejected inside edge threshold"
+            }
+            return "edge selected: \(selectedEdgePointCount) points"
+        default:
+            if probe.sceneNodeName == nil {
+                return "none: no non-overlay hit"
+            }
+            if probe.surfaceTriangleCount == 0, probe.edgeCandidateCount == 0 {
+                return "none: no surface or edge candidates"
+            }
+            return "none: no downloadable edge or promotable surface"
+        }
+    }
+
+    private func selectionDebugRejectedAlternatives(
+        finalKind: String,
+        probe: SurfaceProbeRecord
+    ) -> [SelectionDebugRejectedAlternative] {
+        var alternatives: [SelectionDebugRejectedAlternative] = []
+        if finalKind == "edge", probe.surfaceTriangleCount > 0 {
+            let reason: String
+            if let nearest = probe.nearestFeatureEdgeDistance,
+               let threshold = probe.surfacePromotionThreshold,
+               nearest <= threshold {
+                reason = "surface rejected: inside edge threshold"
+            } else {
+                reason = "surface rejected: accepted edge candidate took priority"
+            }
+            alternatives.append(
+                SelectionDebugRejectedAlternative(
+                    kind: "surface",
+                    reason: reason,
+                    distance: probe.nearestFeatureEdgeDistance,
+                    threshold: probe.surfacePromotionThreshold,
+                    triangleCount: probe.surfaceTriangleCount,
+                    chainKind: nil
+                )
+            )
+        }
+
+        if finalKind == "surface", probe.bestEdgeDistance != nil || probe.edgeCandidateCount > 0 {
+            alternatives.append(
+                SelectionDebugRejectedAlternative(
+                    kind: "edge",
+                    reason: "edge rejected: surface promotion won",
+                    distance: probe.bestEdgeDistance,
+                    threshold: probe.surfacePromotionThreshold,
+                    triangleCount: 0,
+                    chainKind: probe.bestEdgeChainKind
+                )
+            )
+        }
+
+        if finalKind == "none" {
+            if probe.surfaceTriangleCount > 0 {
+                alternatives.append(
+                    SelectionDebugRejectedAlternative(
+                        kind: "surface",
+                        reason: "surface rejected: resolver did not promote candidate",
+                        distance: probe.nearestFeatureEdgeDistance,
+                        threshold: probe.surfacePromotionThreshold,
+                        triangleCount: probe.surfaceTriangleCount,
+                        chainKind: nil
+                    )
+                )
+            }
+            if probe.edgeCandidateCount > 0 {
+                alternatives.append(
+                    SelectionDebugRejectedAlternative(
+                        kind: "edge",
+                        reason: "edge rejected: no downloadable chain",
+                        distance: probe.bestEdgeDistance,
+                        threshold: nil,
+                        triangleCount: 0,
+                        chainKind: probe.bestEdgeChainKind
+                    )
+                )
+            }
+        }
+
+        return alternatives
+    }
+
+    private func selectionDebugRenderValidation(
+        for resolvedSelection: ResolvedSelection?
+    ) -> SelectionDebugRenderValidation {
+        switch resolvedSelection {
+        case .surface(let hit, let surfaceSelection):
+            guard let geometry = hit.node.geometry,
+                  let selectionModel = selectionModel(for: geometry) else {
+                return SelectionDebugRenderValidation(
+                    selectedTriangleCount: surfaceSelection.triangleIndices.count,
+                    selectedEdgePointCount: 0,
+                    localBoundsMin: nil,
+                    localBoundsMax: nil,
+                    materialMode: "replacement-two-material-geometry",
+                    readsDepth: true,
+                    writesDepth: true,
+                    clippingWarning: "selected surface model unavailable for finite bounds"
+                )
+            }
+            let bounds = selectedSurfaceBounds(
+                triangleIndices: surfaceSelection.triangleIndices,
+                selectionModel: selectionModel
+            )
+            let disconnected = selectedSurfaceDisconnected(
+                surfaceSelection,
+                selectionModel: selectionModel
+            )
+            let warning: String?
+            if bounds == nil {
+                warning = "selected surface has no finite bounds"
+            } else if disconnected {
+                warning = "selected surface triangles disconnected from seed"
+            } else {
+                warning = nil
+            }
+            return SelectionDebugRenderValidation(
+                selectedTriangleCount: surfaceSelection.triangleIndices.count,
+                selectedEdgePointCount: 0,
+                localBoundsMin: bounds?.min.asArray(),
+                localBoundsMax: bounds?.max.asArray(),
+                materialMode: "replacement-two-material-geometry",
+                readsDepth: true,
+                writesDepth: true,
+                clippingWarning: warning
+            )
+        case .edge(_, let edgeSelection):
+            let bounds = selectedPointBounds(edgeSelection.chainWorldPoints)
+            return SelectionDebugRenderValidation(
+                selectedTriangleCount: 0,
+                selectedEdgePointCount: edgeSelection.chainWorldPoints.count,
+                localBoundsMin: bounds?.min.asArray(),
+                localBoundsMax: bounds?.max.asArray(),
+                materialMode: "selection-overlay-edge-chain",
+                readsDepth: true,
+                writesDepth: false,
+                clippingWarning: edgeSelection.chainWorldPoints.count < 2 ? "selected edge has fewer than two points" : nil
+            )
+        case nil:
+            return SelectionDebugRenderValidation(
+                selectedTriangleCount: 0,
+                selectedEdgePointCount: 0,
+                localBoundsMin: nil,
+                localBoundsMax: nil,
+                materialMode: "none",
+                readsDepth: false,
+                writesDepth: false,
+                clippingWarning: nil
+            )
+        }
+    }
+
+    private func selectedSurfaceBounds(
+        triangleIndices: [Int],
+        selectionModel: SelectionModel
+    ) -> (min: SIMD3<Float>, max: SIMD3<Float>)? {
+        var points: [SIMD3<Float>] = []
+        points.reserveCapacity(triangleIndices.count * 3)
+        for triangleIndex in triangleIndices {
+            guard triangleIndex >= 0, triangleIndex < selectionModel.triangles.count else {
+                continue
+            }
+            for vertexIndex in selectionModel.triangles[triangleIndex].vertexIndices {
+                guard vertexIndex >= 0, vertexIndex < selectionModel.vertices.count else {
+                    continue
+                }
+                points.append(selectionModel.vertices[vertexIndex])
+            }
+        }
+        return selectedPointBounds(points)
+    }
+
+    private func selectedPointBounds(
+        _ points: [SIMD3<Float>]
+    ) -> (min: SIMD3<Float>, max: SIMD3<Float>)? {
+        guard var minPoint = points.first else {
+            return nil
+        }
+        var maxPoint = minPoint
+        for point in points.dropFirst() {
+            minPoint = SIMD3<Float>(
+                min(minPoint.x, point.x),
+                min(minPoint.y, point.y),
+                min(minPoint.z, point.z)
+            )
+            maxPoint = SIMD3<Float>(
+                max(maxPoint.x, point.x),
+                max(maxPoint.y, point.y),
+                max(maxPoint.z, point.z)
+            )
+        }
+        return (minPoint, maxPoint)
+    }
+
+    private func selectedSurfaceDisconnected(
+        _ surfaceSelection: SurfaceSelectionCandidate,
+        selectionModel: SelectionModel
+    ) -> Bool {
+        let selected = Set(surfaceSelection.triangleIndices)
+        guard selected.contains(surfaceSelection.seedTriangle) else {
+            return true
+        }
+
+        var visited: Set<Int> = [surfaceSelection.seedTriangle]
+        var queue = [surfaceSelection.seedTriangle]
+        var cursor = 0
+        while cursor < queue.count {
+            let triangleIndex = queue[cursor]
+            cursor += 1
+            guard triangleIndex >= 0, triangleIndex < selectionModel.triangles.count else {
+                continue
+            }
+            for neighbor in selectionModel.triangles[triangleIndex].neighborTriangleIDs {
+                let raw = neighbor.rawValue
+                if selected.contains(raw), visited.insert(raw).inserted {
+                    queue.append(raw)
+                }
+            }
+        }
+        return visited.count != selected.count
+    }
+
+    private func selectionDebugCameraState() -> SelectionDebugCameraState {
+        guard let cameraNode = pointOfView,
+              let camera = cameraNode.camera else {
+            return SelectionDebugCameraState(
+                orientationDegrees: [0, 0, 0],
+                position: [0, 0, 0],
+                fieldOfView: 0,
+                distanceFromOrigin: 0
+            )
+        }
+
+        return SelectionDebugCameraState(
+            orientationDegrees: cameraNode.cameraOrientationDegrees(),
+            position: cameraNode.positionArray(),
+            fieldOfView: Double(camera.fieldOfView),
+            distanceFromOrigin: cameraNode.distanceFromOrigin()
+        )
+    }
+
+    private func normalizedViewportPoint(_ point: CGPoint) -> [Double] {
+        let width = max(Double(bounds.width), 1.0)
+        let height = max(Double(bounds.height), 1.0)
+        return [
+            min(max(Double(point.x) / width, 0), 1),
+            min(max(Double(point.y) / height, 0), 1),
+        ]
+    }
+
+    private func hitDistanceFromCamera(hitWorldPoint: [Float]?) -> Float? {
+        guard let hitWorldPoint,
+              hitWorldPoint.count >= 3,
+              let cameraNode = pointOfView else {
+            return nil
+        }
+        let hit = SIMD3<Float>(hitWorldPoint[0], hitWorldPoint[1], hitWorldPoint[2])
+        return simd_distance(cameraNode.simdWorldPosition, hit)
     }
 
     private func clearDebugSelection(from scene: SCNScene) {
@@ -1546,7 +2115,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
     }
 
     private func localSelectionDistanceThreshold(for mesh: MeshTopology) -> Float {
-        max(mesh.maxExtent * 0.018, 0.35)
+        max(mesh.maxExtent * 0.03, 0.0005)
     }
 
     private func localSurfaceSelectionDistanceThreshold(for mesh: MeshTopology) -> Float {
@@ -3209,13 +3778,6 @@ private struct MeshTopology {
             return []
         }
 
-        if isPlanarSurface(triangleIndices: smoothPatch, seedTriangle: seedTriangle) {
-            let expanded = coplanarSurfaceTriangles(matching: seedTriangle)
-            if expanded.count >= smoothPatch.count {
-                return expanded
-            }
-        }
-
         return smoothPatch
     }
 
@@ -3330,7 +3892,7 @@ private struct MeshTopology {
     }
 
     private var surfacePlaneTolerance: Float {
-        max(maxExtent * 0.00015, 0.004)
+        max(maxExtent * 0.00015, 0.000001)
     }
 
     func triangleCentroid(_ triangle: MeshTriangle) -> SIMD3<Float> {

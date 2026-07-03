@@ -22,14 +22,41 @@ struct TestingAction: Codable {
     /// - zoom: delta FOV in degrees
     /// - wait: wait duration in milliseconds
     /// - selectSurface: test-only surface overlay selection on the loaded scene
+    /// - selectAt: click the same selection path used by mouse input
+    /// - setCamera: restore an exact camera pose for replay
     let kind: TestingActionKind
     let value: Double?
     let durationMs: Double?
+    let x: Double?
+    let y: Double?
+    let coordinateSpace: SelectionDebugCoordinateSpace?
+    let expect: SelectionDebugExpectation?
+    let orientationDegrees: [Double]?
+    let cameraPosition: [Double]?
+    let fieldOfView: Double?
 
-    init(kind: TestingActionKind, value: Double? = nil, durationMs: Double? = nil) {
+    init(
+        kind: TestingActionKind,
+        value: Double? = nil,
+        durationMs: Double? = nil,
+        x: Double? = nil,
+        y: Double? = nil,
+        coordinateSpace: SelectionDebugCoordinateSpace? = nil,
+        expect: SelectionDebugExpectation? = nil,
+        orientationDegrees: [Double]? = nil,
+        cameraPosition: [Double]? = nil,
+        fieldOfView: Double? = nil
+    ) {
         self.kind = kind
         self.value = value
         self.durationMs = durationMs
+        self.x = x
+        self.y = y
+        self.coordinateSpace = coordinateSpace
+        self.expect = expect
+        self.orientationDegrees = orientationDegrees
+        self.cameraPosition = cameraPosition
+        self.fieldOfView = fieldOfView
     }
 }
 
@@ -40,6 +67,8 @@ enum TestingActionKind: String, Codable {
     case zoom
     case wait
     case selectSurface
+    case selectAt
+    case setCamera
 }
 
 struct TestingRunReport: Codable {
@@ -68,6 +97,9 @@ struct TestingSample: Codable {
     let distanceFromOrigin: Double
     let snapshotPath: String?
     let actionDurationMs: Double?
+    let selectionDebugEventPath: String?
+    let selectionDebugSummary: SelectionDebugEventSummary?
+    let selectionDebugExpectationFailures: [String]?
 }
 
 extension SCNNode {
