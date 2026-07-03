@@ -72,6 +72,21 @@ xcodebuild \
 - `testing/scripts/run-testing.sh <plan_json> <output_json>`
 - `testing/scripts/register-file-types.sh`
 
+## 2026-07-03 Update
+
+### Problem context
+- Adding app-only Swift files under `QuickLookStep/QuickLookStep` can look like it requires manual `project.pbxproj` source-phase edits.
+
+### What changed
+- Documented that the app target uses a `PBXFileSystemSynchronizedRootGroup` for `QuickLookStep/QuickLookStep`, so new Swift files in that folder are picked up by the `QuickLookStep` target without explicit build-file entries.
+
+### Why it helped
+- Avoids unnecessary project-file churn and reduces worktree conflict risk when adding production app Swift files.
+
+### Validation
+- Add the Swift file under `QuickLookStep/QuickLookStep`, then run `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`.
+- If the build logs show `SwiftCompile ... <NewFile>.swift`, no manual `project.pbxproj` edit is needed.
+
 ## 2026-07-02 Update
 
 ### Problem context
