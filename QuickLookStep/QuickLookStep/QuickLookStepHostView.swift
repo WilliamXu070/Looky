@@ -12,6 +12,12 @@ struct QuickLookStepHostView: View {
     let testingOutputPath: String?
     let autoQuitAfterTesting: Bool
     let initialFilePath: String?
+    let edgeProbeEnabled: Bool
+    let edgeProbeOutputPath: String?
+    let surfaceProbeEnabled: Bool
+    let surfaceProbeOutputPath: String?
+    let edgeSelectionMode: EdgeSelectionMode
+    let edgeOnlyMode: Bool
 
     @State private var scene: SCNScene? = nil
     @State private var loadError: String? = nil
@@ -19,23 +25,46 @@ struct QuickLookStepHostView: View {
     @State private var didRunAutomatedTests = false
     @State private var hasManualLoad = false
     @State private var automatedTestingTask: Task<Void, Never>? = nil
+    @State private var currentModelPathForProbe: String = ""
 
     init(
         testingPlanPath: String? = nil,
         testingOutputPath: String? = nil,
         autoQuitAfterTesting: Bool = false,
-        initialFilePath: String? = nil
+        initialFilePath: String? = nil,
+        edgeProbeEnabled: Bool = false,
+        edgeProbeOutputPath: String? = nil,
+        surfaceProbeEnabled: Bool = false,
+        surfaceProbeOutputPath: String? = nil,
+        edgeSelectionMode: EdgeSelectionMode = .fitted,
+        edgeOnlyMode: Bool = false
     ) {
         self.testingPlanPath = testingPlanPath
         self.testingOutputPath = testingOutputPath
         self.autoQuitAfterTesting = autoQuitAfterTesting
         self.initialFilePath = initialFilePath
+        self.edgeProbeEnabled = edgeProbeEnabled
+        self.edgeProbeOutputPath = edgeProbeOutputPath
+        self.surfaceProbeEnabled = surfaceProbeEnabled
+        self.surfaceProbeOutputPath = surfaceProbeOutputPath
+        self.edgeSelectionMode = edgeSelectionMode
+        self.edgeOnlyMode = edgeOnlyMode
     }
 
     var body: some View {
         ZStack {
             if let scene {
-                SceneKitView(scene: scene)
+                SceneKitView(
+                    scene: scene,
+                    edgeFitSettings: .init(),
+                    edgeProbeMode: edgeProbeEnabled,
+                    edgeSelectionMode: edgeSelectionMode,
+                    edgeProbeOutputDirectory: edgeProbeOutputPath ?? "/tmp/quicklook-edge-probe",
+                    surfaceProbeMode: surfaceProbeEnabled,
+                    surfaceProbeOutputDirectory: surfaceProbeOutputPath ?? "/tmp/quicklook-surface-probe",
+                    edgeProbeModelHint: currentModelPathForProbe,
+                    edgeOnlyMode: edgeOnlyMode
+                )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Text("Drop a supported 3D file")
@@ -52,6 +81,7 @@ struct QuickLookStepHostView: View {
                 }
             }
         }
+        .frame(minWidth: 900, minHeight: 600)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onDrop(of: [UTType.fileURL, UTType.url, UTType.item], isTargeted: $isTargeted) { providers in
@@ -305,22 +335,33 @@ struct QuickLookStepHostView: View {
     @MainActor
     private func applyTestingAction(_ action: TestingAction, to scene: SCNScene) {
         guard let cameraNode = scene.rootNode.childNode(withName: "camera", recursively: true),
-              let camera = cameraNode.camera,
-              let value = action.value
+              let camera = cameraNode.camera
         else {
             return
         }
 
         switch action.kind {
         case .rotateX:
+            guard let value = action.value else { return }
             cameraNode.eulerAngles.x += CGFloat(value * .pi / 180.0)
         case .rotateY:
+            guard let value = action.value else { return }
             cameraNode.eulerAngles.y += CGFloat(value * .pi / 180.0)
         case .rotateZ:
+            guard let value = action.value else { return }
             cameraNode.eulerAngles.z += CGFloat(value * .pi / 180.0)
         case .zoom:
+            guard let value = action.value else { return }
             let target = max(5.0, min(120.0, Double(camera.fieldOfView) + value))
             camera.fieldOfView = CGFloat(target)
+        case .selectSurface:
+            let result = applyAutomatedSurfaceSelectionOverlay(to: scene)
+            NSLog(
+                "Testing selectSurface overlay applied=%@ triangles=%ld node=%@",
+                result.applied ? "YES" : "NO",
+                result.triangleCount,
+                result.nodeName ?? "none"
+            )
         case .wait:
             break
         }
@@ -468,6 +509,7 @@ struct QuickLookStepHostView: View {
         do {
             let start = CFAbsoluteTimeGetCurrent()
             print("Loading file at", url.path)
+            currentModelPathForProbe = url.path
             let loadResult = try SceneBuilder.sceneWithTrace(for: url)
             scene = loadResult.scene
             return ((CFAbsoluteTimeGetCurrent() - start) * 1000, loadResult.method, loadResult.metadata)

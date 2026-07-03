@@ -1,0 +1,18 @@
+{
+  "scenarios": [
+    {
+      "name": "thor-surface-visible-orange",
+      "file": "/Users/williamxu/Downloads/thor luminos adaptor.step",
+      "actions": [
+        {
+          "kind": "selectSurface",
+          "durationMs": 150
+        },
+        {
+          "kind": "wait",
+          "durationMs": 100
+        }
+      ]
+    }
+  ]
+}

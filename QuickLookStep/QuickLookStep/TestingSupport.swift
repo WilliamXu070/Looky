@@ -21,6 +21,7 @@ struct TestingAction: Codable {
     /// - rotateX/rotateY/rotateZ: delta in degrees
     /// - zoom: delta FOV in degrees
     /// - wait: wait duration in milliseconds
+    /// - selectSurface: test-only surface overlay selection on the loaded scene
     let kind: TestingActionKind
     let value: Double?
     let durationMs: Double?
@@ -38,6 +39,7 @@ enum TestingActionKind: String, Codable {
     case rotateZ
     case zoom
     case wait
+    case selectSurface
 }
 
 struct TestingRunReport: Codable {
