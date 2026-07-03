@@ -1,8 +1,8 @@
 {
   "scenarios": [
     {
-      "name": "thor-surface-visible-orange",
-      "file": "/Users/williamxu/Downloads/thor luminos adaptor.step",
+      "name": "cube-hole-surface-visible-orange",
+      "file": "../input/cube_hole.step",
       "actions": [
         {
           "kind": "selectSurface",

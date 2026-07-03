@@ -98,3 +98,18 @@ Passing output must include:
 - `orange pixel report: ...visible-surface-orange-pixels.json`
 
 Open the screenshot and verify the loaded STEP model has a visible orange surface overlay. This catches false positives where the surface math passes but the rendered UI stays gray or pale yellow.
+
+## 2026-07-03 Update
+
+### Problem context
+- `testing/surface-selection/scripts/run_visible_surface_overlay_test.sh` used a plan that pointed at `/Users/williamxu/Downloads/thor luminos adaptor.step`, which is private machine state and missing in fresh worktrees.
+
+### What changed
+- `testing/plans/surface-selection-visible.json` now uses the repo fixture `../input/cube_hole.step`, and the visible overlay script validates plan file references before launching QuickLookStep.
+
+### Why it helped
+- Makes the visible orange proof runnable from checked-in fixtures and fails early with the missing scenario file instead of timing out inside the app launch path.
+
+### Validation
+- `testing/surface-selection/scripts/run_visible_surface_overlay_test.sh`
+- If LaunchServices does not deliver the plan, retry with `QLS_FORCE_DIRECT_LAUNCH=1 testing/surface-selection/scripts/run_visible_surface_overlay_test.sh`.

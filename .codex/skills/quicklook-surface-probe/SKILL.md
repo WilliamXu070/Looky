@@ -55,3 +55,18 @@ testing/edge-shape-detection/scripts/replay_surface_invariance.sh
 ```
 
 Do not call the live surface issue fixed until a probe click either resolves to `surface` or the chosen failure bucket has been intentionally handled.
+
+## 2026-07-03 Update
+
+### Problem context
+- `testing/edge-shape-detection/scripts/replay_surface_invariance.sh` depended on stale `/tmp/quicklook-edge-download` JSON files, so a fresh checkout failed before exercising the replay logic.
+
+### What changed
+- The replay now defaults to the checked-in saved edge fixture at `testing/edge-shape-detection/polygons/saved/thor-connected-edge-semicircle.json` and prints explicit instructions when custom top/side inputs are missing.
+
+### Why it helped
+- Keeps the probe/golden replay lane reproducible from repo state while still allowing freshly captured top/side edge downloads for live regression checks.
+
+### Validation
+- `testing/edge-shape-detection/scripts/replay_surface_invariance.sh`
+- For live probe pairs: `testing/edge-shape-detection/scripts/replay_surface_invariance.sh /path/to/top-edge-download.json /path/to/side-edge-download.json`
