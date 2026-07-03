@@ -196,3 +196,19 @@ testing/scripts/verify_quicklook_ui_launch.sh
 ### Validation
 - Before creating worktrees, run `git status --short`, preserve/commit current selection work, and add `.worktrees/` to `.git/info/exclude`.
 - After each merge: build, run surface layer tests, edge shape tests, direct-launch orientation tests, and final probe/UI validation.
+
+## 2026-07-03 Update
+
+### Problem context
+- Consolidated edge + surface selection needs a standalone golden-flow gate before SceneKit UI integration changes.
+
+### What changed
+- Added guidance to run `testing/selection-engine/run_selection_engine_tests.sh` for the unified resolver contract: center face -> surface, near feature edge -> edge, offset plane isolation, curved patch selection, blank click -> none, and stable rounded-loop IDs from adjacent surfaces.
+
+### Why it helped
+- Catches resolver-priority and topology-contract regressions before UI hit testing, overlays, or probe plumbing are involved.
+
+### Validation
+- `testing/selection-engine/run_selection_engine_tests.sh`
+- `testing/surface-selection/scripts/run_surface_layer_test.sh`
+- `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`
