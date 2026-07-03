@@ -77,3 +77,18 @@ If the process exists but the top visible window is not `QuickLookStep`, the UI 
 ### Validation
 - `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app /Users/williamxu/Desktop/Projects/quicklook/testing/input/cube_hole.step /tmp/quicklook-ui-launch-check-cube.png`
 - For selection-debug failures, inspect `testing/results/<run>.log` and `/tmp/quicklook-selection-debug*/selection-debug-session.json` before using broad `log show` output.
+
+## 2026-07-03 Update
+
+### Problem context
+- On a crowded desktop, `verify_quicklook_ui_launch.sh` can report another app as the top CoreGraphics window even when QuickLookStep has a visible, active, correctly rendered window and the menu bar belongs to QuickLookStep.
+
+### What changed
+- Added the fallback evidence rule: when the top-window owner check is polluted by other app windows, capture a screenshot and print the first several layer-0 CoreGraphics windows so the QuickLookStep window bounds and rendered model are visible in the evidence.
+
+### Why it helped
+- Prevents a local z-order artifact from hiding the real UI result, while still requiring proof that the app window rendered the STEP sample.
+
+### Validation
+- `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app /Users/williamxu/Desktop/Projects/quicklook/testing/input/cube_hole.step /tmp/quicklook-ui-launch-check-cube.png`
+- If the owner check disagrees with the screenshot, save a visible screenshot such as `/tmp/quicklook-ui-launch-check-gpu-visible.png` and list layer-0 windows with CoreGraphics before reporting the launch proof as partial.

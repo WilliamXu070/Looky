@@ -19,6 +19,7 @@ struct SelectionModel {
     private(set) var surfacePatches: [SelectionSurfacePatch]
     private(set) var edgeLoops: [SelectionEdgeLoop]
     let weldedEdgeBuckets: [SelectionWeldedEdgeKey: [SelectionWeldedEdgeEntry]]
+    let featureEdgeSegments: [SelectionFeatureSegment]
     let maxExtent: Float
     let settings: SelectionModelSettings
 
@@ -104,6 +105,10 @@ struct SelectionModel {
             triangles: triangles,
             featureEdgeDegrees: settings.featureEdgeDegrees
         )
+        let featureEdgeSegments = Self.buildFeatureEdgeSegments(
+            buckets: weldedEdgeBuckets,
+            edges: edges
+        )
 
         self.vertices = mesh.vertices
         self.triangles = triangles
@@ -111,6 +116,7 @@ struct SelectionModel {
         self.surfacePatches = []
         self.edgeLoops = []
         self.weldedEdgeBuckets = weldedEdgeBuckets
+        self.featureEdgeSegments = featureEdgeSegments
         self.maxExtent = maxExtent
         self.settings = settings
         self.edgeIDsByKey = edgeIDsByKey
@@ -194,9 +200,35 @@ struct SelectionModel {
     }
 
     func nearestFeatureEdgeDistance(to point: SIMD3<Float>) -> Float {
+        nearestFeatureEdgeDistanceCPU(to: point)
+    }
+
+    func nearestFeatureEdgeDistanceGPUAccelerated(
+        to point: SIMD3<Float>,
+        accelerator: SelectionMetalAccelerator?,
+        minimumSegmentCount: Int = 256
+    ) -> SelectionDistanceResult {
+        guard !featureEdgeSegments.isEmpty else {
+            return SelectionDistanceResult(distance: Float.greatestFiniteMagnitude, acceleration: "cpu")
+        }
+
+        guard featureEdgeSegments.count >= minimumSegmentCount else {
+            return SelectionDistanceResult(distance: nearestFeatureEdgeDistanceCPU(to: point), acceleration: "cpu")
+        }
+
+        guard let accelerator,
+              let distance = accelerator.nearestFeatureEdgeDistance(point: point, segments: featureEdgeSegments)
+        else {
+            return SelectionDistanceResult(distance: nearestFeatureEdgeDistanceCPU(to: point), acceleration: "unavailable")
+        }
+
+        return SelectionDistanceResult(distance: distance, acceleration: "metal")
+    }
+
+    private func nearestFeatureEdgeDistanceCPU(to point: SIMD3<Float>) -> Float {
         var bestDistance = Float.greatestFiniteMagnitude
 
-        for segment in weldedFeatureEdgeSegments() {
+        for segment in featureEdgeSegments {
             let closest = SelectionGeometryMath.closestPoint(onSegmentFrom: segment.start, to: segment.end, point: point)
             bestDistance = min(bestDistance, simd_distance(point, closest))
         }
@@ -528,17 +560,6 @@ struct SelectionModel {
         ) / 3
     }
 
-    private func weldedFeatureEdgeSegments() -> [(start: SIMD3<Float>, end: SIMD3<Float>)] {
-        weldedEdgeBuckets
-            .sorted { $0.key < $1.key }
-            .compactMap { _, entries -> (start: SIMD3<Float>, end: SIMD3<Float>)? in
-                guard let first = entries.first, isWeldedFeatureEdge(entries) else {
-                    return nil
-                }
-                return (first.start, first.end)
-            }
-    }
-
     private func isWeldedFeatureEdge(_ entries: [SelectionWeldedEdgeEntry]) -> Bool {
         isWeldedBoundaryEdge(entries, creaseDegrees: settings.featureEdgeDegrees)
     }
@@ -762,6 +783,31 @@ struct SelectionModel {
                 }
             }
         }
+    }
+
+    private static func buildFeatureEdgeSegments(
+        buckets: [SelectionWeldedEdgeKey: [SelectionWeldedEdgeEntry]],
+        edges: [SelectionEdge]
+    ) -> [SelectionFeatureSegment] {
+        buckets
+            .sorted { $0.key < $1.key }
+            .compactMap { _, entries -> SelectionFeatureSegment? in
+                guard let first = entries.first else {
+                    return nil
+                }
+                let isFeature = entries.contains { entry in
+                    guard let edgeID = entry.edgeID,
+                          edges.indices.contains(edgeID.rawValue)
+                    else {
+                        return false
+                    }
+                    return edges[edgeID.rawValue].isWeldedFeatureEdge
+                }
+                guard isFeature else {
+                    return nil
+                }
+                return SelectionFeatureSegment(start: first.start, end: first.end)
+            }
     }
 
     private static func buildWeldedEdgeBuckets(

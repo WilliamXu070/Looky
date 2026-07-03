@@ -158,6 +158,16 @@ struct SelectionWeldedEdgeEntry {
     let end: SIMD3<Float>
 }
 
+struct SelectionFeatureSegment {
+    let start: SIMD3<Float>
+    let end: SIMD3<Float>
+}
+
+struct SelectionDistanceResult {
+    let distance: Float
+    let acceleration: String
+}
+
 struct SelectionSurfacePatch {
     let id: SelectionSurfacePatchID
     let seedTriangleID: SelectionTriangleID

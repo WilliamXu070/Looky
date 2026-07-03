@@ -103,3 +103,19 @@ xcodebuild \
 - `make libfoxtrot_universal.a`
 - `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
 - `testing/scripts/verify_quicklook_ui_launch.sh`
+
+## 2026-07-03 Update
+
+### Problem context
+- Adding Metal compute support raised the question of whether a new `.metal` file needs manual `project.pbxproj` target membership edits.
+
+### What changed
+- Documented that `.metal` files placed under `QuickLookStep/QuickLookStep` are included by the same file-system synchronized app group as Swift files and should compile into `Contents/Resources/default.metallib`.
+
+### Why it helped
+- Prevents unnecessary Xcode project churn while giving a concrete packaging check for runtime kernel-loading failures.
+
+### Validation
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- `find build/Build/Products/Debug/QuickLookStep.app/Contents/Resources -maxdepth 1 -name '*.metallib' -print -exec ls -lh {} \;`
+- If `SelectionMetalAccelerator` logs that the kernel is missing, first confirm `default.metallib` exists in the app bundle before editing `project.pbxproj`.

@@ -308,3 +308,22 @@ testing/scripts/verify_quicklook_ui_launch.sh
 - `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 QLS_SELECTION_DEBUG_OUTPUT=/tmp/quicklook-selection-debug-fixed-2 testing/scripts/run-testing.sh testing/plans/selection-debug-cube-hole.json testing/results/selection-debug-fixed-2.json`
 - `swift testing/selection-debug/replay_selection_session.swift /tmp/quicklook-selection-debug-fixed-2/selection-debug-session.json testing/results/selection-debug-fixed-2-replay.json`
 - Repeat the direct run once and confirm `selection-debug-session.json` has exactly 4 events, no expectation failures, and stable camera positions.
+
+## 2026-07-03 Update
+
+### Problem context
+- Nearest feature-edge distance was still rebuilt and scanned on CPU for every surface/edge resolver pass, making the hottest shared edge/surface gate slower on larger meshes.
+
+### What changed
+- Added the GPU-assisted selection triage path: `SelectionModel.featureEdgeSegments` caches welded feature segments, `SelectionMetalAccelerator` runs the nearest-feature-edge distance kernel when the segment count reaches the threshold, and selection-debug summaries record `nearestFeatureEdgeAcceleration`.
+- Added the validation override `QLS_SELECTION_METAL_MIN_SEGMENTS=1` for small repo fixtures; production default remains 256 segments, and `QLS_DISABLE_SELECTION_METAL=1` forces the CPU fallback path.
+
+### Why it helped
+- Keeps SceneKit hit testing, surface topology expansion, and highlight rendering unchanged while offloading the repeated nearest-feature-edge scan when a model is large enough to justify Metal dispatch.
+- Debug sessions now show whether a click used `metal`, intentional `cpu`, or `unavailable` fallback, which makes speed/accuracy investigations less ambiguous.
+
+### Validation
+- `swift testing/selection-engine/scripts/check_metal_feature_distance.swift`
+- `QLS_SELECTION_METAL_MIN_SEGMENTS=1 QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 QLS_SELECTION_DEBUG_OUTPUT=/tmp/quicklook-selection-debug-gpu-metal testing/scripts/run-testing.sh testing/plans/selection-debug-cube-hole.json testing/results/selection-debug-gpu-metal.json`
+- `QLS_SELECTION_METAL_MIN_SEGMENTS=1 QLS_DISABLE_SELECTION_METAL=1 QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 QLS_SELECTION_DEBUG_OUTPUT=/tmp/quicklook-selection-debug-gpu-unavailable testing/scripts/run-testing.sh testing/plans/selection-debug-cube-hole.json testing/results/selection-debug-gpu-unavailable.json`
+- Existing gates still apply: surface layer test, selection-engine replay, edge-shape loop, and the selection-debug cube-hole golden flow.

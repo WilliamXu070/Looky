@@ -67,6 +67,7 @@ struct SelectionDebugEvent: Codable {
             surfaceTriangleCount: resolver.selectedSurfaceTriangleCount,
             edgeCandidateCount: resolver.edgeCandidateCount,
             nearestFeatureEdgeDistance: resolver.nearestFeatureEdgeDistance,
+            nearestFeatureEdgeAcceleration: resolver.nearestFeatureEdgeAcceleration,
             eventPath: eventPath,
             beforeScreenshotPath: beforeScreenshotPath,
             afterScreenshotPath: afterScreenshotPath
@@ -81,6 +82,7 @@ struct SelectionDebugEventSummary: Codable {
     let surfaceTriangleCount: Int
     let edgeCandidateCount: Int
     let nearestFeatureEdgeDistance: Float?
+    let nearestFeatureEdgeAcceleration: String?
     let eventPath: String?
     let beforeScreenshotPath: String?
     let afterScreenshotPath: String?
@@ -121,6 +123,7 @@ struct SelectionDebugResolver: Codable {
     let selectedEdgePointCount: Int
     let seedTriangle: Int?
     let nearestFeatureEdgeDistance: Float?
+    let nearestFeatureEdgeAcceleration: String?
     let surfacePromotionThreshold: Float?
     let edgeCandidateCount: Int
     let bestEdgeDistance: Float?

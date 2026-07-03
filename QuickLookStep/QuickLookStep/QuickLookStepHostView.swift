@@ -170,6 +170,7 @@ struct QuickLookStepHostView: View {
                 Text(
                     "seed \(event.resolver.seedTriangle.map(String.init) ?? "-")  near \(formatDebugFloat(event.resolver.nearestFeatureEdgeDistance)) / \(formatDebugFloat(event.resolver.surfacePromotionThreshold))"
                 )
+                Text("accel \(event.resolver.nearestFeatureEdgeAcceleration ?? "-")")
                 Text(
                     "vp \(formatDebugDouble(event.input.normalizedViewportPoint.first)) \(formatDebugDouble(event.input.normalizedViewportPoint.dropFirst().first))  \(event.eventID)"
                 )

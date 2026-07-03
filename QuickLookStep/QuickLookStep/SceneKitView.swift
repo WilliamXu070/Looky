@@ -146,6 +146,9 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
     private var mouseDownPoint: CGPoint?
     private var mouseDraggedPastSelectionThreshold = false
     private let cameraDragSelectionThreshold: CGFloat = 4
+    private let metalFeatureDistanceThreshold = SelectionMetalAccelerator.minimumSegmentThreshold
+    private var selectionMetalAccelerator: SelectionMetalAccelerator? = SelectionMetalAccelerator()
+    private var loggedSelectionAccelerationModes: Set<String> = []
 
     private struct ScreenStableHighlightNode {
         let node: SCNNode
@@ -672,6 +675,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 selectedEdgePointCount: selectedEdgePointCount,
                 seedTriangle: seedTriangle,
                 nearestFeatureEdgeDistance: probe.nearestFeatureEdgeDistance,
+                nearestFeatureEdgeAcceleration: probe.nearestFeatureEdgeAcceleration,
                 surfacePromotionThreshold: probe.surfacePromotionThreshold,
                 edgeCandidateCount: probe.edgeCandidateCount,
                 bestEdgeDistance: probe.bestEdgeDistance,
@@ -1132,7 +1136,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             let edgeSelectionRadius = edgeSelectionWorldRadius(for: hit)
             let localRay = localRayThroughScreenPoint(attemptPoint, in: hit.node)
             let localHit = simdVector(hit.localCoordinates)
-            let nearestFeatureEdgeDistance = selectionModel.nearestFeatureEdgeDistance(to: localHit)
+            let nearestFeatureEdge = nearestFeatureEdgeDistance(in: selectionModel, to: localHit)
+            let nearestFeatureEdgeDistance = nearestFeatureEdge.distance
             let surfaceCandidate = resolveSurfaceSelection(for: hit, in: selectionModel)
             if let surfaceCandidate,
                bestSurfaceFallback == nil ||
@@ -1296,7 +1301,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         }
 
         let threshold = localSurfaceSelectionDistanceThreshold(for: selectionModel)
-        let nearestFeatureEdgeDistance = selectionModel.nearestFeatureEdgeDistance(to: hitLocal)
+        let nearestFeatureEdge = nearestFeatureEdgeDistance(in: selectionModel, to: hitLocal)
+        let nearestFeatureEdgeDistance = nearestFeatureEdge.distance
         guard nearestFeatureEdgeDistance > threshold else {
             return nil
         }
@@ -1310,8 +1316,32 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             seedTriangle: seedTriangle.rawValue,
             triangleIndices: surfaceTriangles,
             nearestFeatureEdgeDistance: nearestFeatureEdgeDistance,
+            nearestFeatureEdgeAcceleration: nearestFeatureEdge.acceleration,
             edgePromotionThreshold: threshold
         )
+    }
+
+    private func nearestFeatureEdgeDistance(
+        in selectionModel: SelectionModel,
+        to point: SIMD3<Float>
+    ) -> SelectionDistanceResult {
+        let result = selectionModel.nearestFeatureEdgeDistanceGPUAccelerated(
+            to: point,
+            accelerator: selectionMetalAccelerator,
+            minimumSegmentCount: metalFeatureDistanceThreshold
+        )
+
+        if loggedSelectionAccelerationModes.insert(result.acceleration).inserted {
+            NSLog(
+                "Selection nearest-feature acceleration=%@ featureSegments=%ld metalThreshold=%ld metalDisabled=%@",
+                result.acceleration,
+                selectionModel.featureEdgeSegments.count,
+                metalFeatureDistanceThreshold,
+                SelectionMetalAccelerator.disabledByEnvironment ? "YES" : "NO"
+            )
+        }
+
+        return result
     }
 
     private func makeEdgeChainNode(points: [SIMD3<Float>]) -> SCNNode {
@@ -1677,6 +1707,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 surfacePromoted: false,
                 surfaceTriangleCount: 0,
                 nearestFeatureEdgeDistance: nil,
+                nearestFeatureEdgeAcceleration: nil,
                 surfacePromotionThreshold: nil,
                 edgeCandidateCount: 0,
                 bestEdgeDistance: nil,
@@ -1696,6 +1727,12 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         )
         let seedTriangle = selectionModel.closestTriangleID(to: hitLocal)?.rawValue
         let surfaceCandidate = resolveSurfaceSelection(for: hit, in: selectionModel)
+        let nearestFeatureEdge = surfaceCandidate.map {
+            SelectionDistanceResult(
+                distance: $0.nearestFeatureEdgeDistance,
+                acceleration: $0.nearestFeatureEdgeAcceleration
+            )
+        } ?? nearestFeatureEdgeDistance(in: selectionModel, to: hitLocal)
         let mesh = meshTopology(for: geometry)
         let edgeCandidates = mesh.map { nearestEdgeCandidates(for: hit, in: $0) } ?? []
         let edgeSelectionRadius = edgeSelectionWorldRadius(for: hit)
@@ -1738,7 +1775,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             seedTriangle: seedTriangle,
             surfacePromoted: surfaceCandidate != nil,
             surfaceTriangleCount: surfaceCandidate?.triangleIndices.count ?? 0,
-            nearestFeatureEdgeDistance: surfaceCandidate?.nearestFeatureEdgeDistance ?? selectionModel.nearestFeatureEdgeDistance(to: hitLocal),
+            nearestFeatureEdgeDistance: nearestFeatureEdge.distance,
+            nearestFeatureEdgeAcceleration: nearestFeatureEdge.acceleration,
             surfacePromotionThreshold: localSurfaceSelectionDistanceThreshold(for: selectionModel),
             edgeCandidateCount: edgeCandidates.count,
             bestEdgeDistance: bestEdgeSnap?.distance,
@@ -2314,6 +2352,7 @@ private struct SurfaceProbeRecord: Codable {
     let surfacePromoted: Bool
     let surfaceTriangleCount: Int
     let nearestFeatureEdgeDistance: Float?
+    let nearestFeatureEdgeAcceleration: String?
     let surfacePromotionThreshold: Float?
     let edgeCandidateCount: Int
     let bestEdgeDistance: Float?
@@ -2704,6 +2743,7 @@ private struct SurfaceSelectionCandidate {
     let seedTriangle: Int
     let triangleIndices: [Int]
     let nearestFeatureEdgeDistance: Float
+    let nearestFeatureEdgeAcceleration: String
     let edgePromotionThreshold: Float
 }
 
