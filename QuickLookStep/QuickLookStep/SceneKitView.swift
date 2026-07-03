@@ -63,9 +63,22 @@ struct SceneKitView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: SCNView, context: Context) {
+        let sceneChanged: Bool
+        switch (nsView.scene, scene) {
+        case let (current?, next?):
+            sceneChanged = current !== next
+        case (nil, nil):
+            sceneChanged = false
+        default:
+            sceneChanged = true
+        }
+
         nsView.scene = scene
         nsView.pointOfView = scene?.rootNode.childNode(withName: "camera", recursively: true)
         if let selectableView = nsView as? DebugSelectableSCNView {
+            if sceneChanged {
+                selectableView.invalidateSelectionCaches()
+            }
             selectableView.edgeFitSettings = edgeFitSettings
             selectableView.edgeProbeMode = edgeProbeMode
             selectableView.edgeSelectionMode = edgeSelectionMode
@@ -99,6 +112,9 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
     var onSelectionResult: ((EdgeSelectionDownload?) -> Void)?
     var edgeOnlyMode = false
     private var surfaceGeometryRestores: [(node: SCNNode, geometry: SCNGeometry)] = []
+    private var selectionModelCache: [ObjectIdentifier: SelectionModel] = [:]
+    private var meshTopologyCache: [ObjectIdentifier: MeshTopology] = [:]
+    private var cachedMeshSettings = EdgeFitSettings()
 
     private struct ScreenStableHighlightNode {
         let node: SCNNode
@@ -120,6 +136,41 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
 
     func renderer(_ renderer: any SCNSceneRenderer, updateAtTime time: TimeInterval) {
         updateScreenStableHighlights()
+    }
+
+    func invalidateSelectionCaches() {
+        selectionModelCache.removeAll()
+        meshTopologyCache.removeAll()
+        cachedMeshSettings = edgeFitSettings
+    }
+
+    private func selectionModel(for geometry: SCNGeometry) -> SelectionModel? {
+        let key = ObjectIdentifier(geometry)
+        if let cached = selectionModelCache[key] {
+            return cached
+        }
+        guard let model = SelectionModel(geometry: geometry) else {
+            return nil
+        }
+        selectionModelCache[key] = model
+        return model
+    }
+
+    private func meshTopology(for geometry: SCNGeometry) -> MeshTopology? {
+        if cachedMeshSettings != edgeFitSettings {
+            meshTopologyCache.removeAll()
+            cachedMeshSettings = edgeFitSettings
+        }
+
+        let key = ObjectIdentifier(geometry)
+        if let cached = meshTopologyCache[key] {
+            return cached
+        }
+        guard let mesh = MeshTopology(geometry: geometry, settings: edgeFitSettings) else {
+            return nil
+        }
+        meshTopologyCache[key] = mesh
+        return mesh
     }
 
     private func drawDebugSelection(at point: CGPoint, event: NSEvent? = nil) {
@@ -203,7 +254,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         scene.rootNode.addChildNode(overlayRoot)
 
         guard let geometry = hit.node.geometry,
-              let mesh = MeshTopology(geometry: geometry, settings: edgeFitSettings) else {
+              let mesh = meshTopology(for: geometry) else {
             return
         }
 
@@ -324,10 +375,10 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         clearDebugSelection(from: scene)
 
         guard let geometry = hit.node.geometry,
-              let mesh = MeshTopology(geometry: geometry, settings: edgeFitSettings),
+              let selectionModel = selectionModel(for: geometry),
               let selectedGeometry = makeSurfaceSelectionGeometry(
                 triangleIndices: surfaceSelection.triangleIndices,
-                mesh: mesh,
+                selectionModel: selectionModel,
                 baseMaterial: geometry.materials.first
               ) else {
             let elapsedMs = (CFAbsoluteTimeGetCurrent() - selectionStart) * 1000
@@ -504,15 +555,16 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             }
 
             guard let geometry = hit.node.geometry,
-                  let mesh = MeshTopology(geometry: geometry, settings: edgeFitSettings) else {
+                  let mesh = meshTopology(for: geometry),
+                  let selectionModel = selectionModel(for: geometry) else {
                 continue
             }
 
             let edgeSelectionRadius = edgeSelectionWorldRadius(for: hit)
             let localRay = localRayThroughScreenPoint(attemptPoint, in: hit.node)
             let localHit = simdVector(hit.localCoordinates)
-            let nearestFeatureEdgeDistance = mesh.nearestFeatureEdgeDistance(to: localHit)
-            let surfaceCandidate = resolveSurfaceSelection(for: hit, in: mesh)
+            let nearestFeatureEdgeDistance = selectionModel.nearestFeatureEdgeDistance(to: localHit)
+            let surfaceCandidate = resolveSurfaceSelection(for: hit, in: selectionModel)
             if let surfaceCandidate,
                bestSurfaceFallback == nil ||
                 surfaceCandidate.triangleIndices.count > bestSurfaceFallback!.selection.triangleIndices.count {
@@ -530,7 +582,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                useConnectedFeaturePath == false,
                let surfaceCandidate,
                nearestFeatureEdgeDistance > surfaceCandidate.edgePromotionThreshold {
-                guard let seedTriangle = mesh.closestTriangleIndex(to: localHit) else {
+                guard let seedTriangle = selectionModel.closestTriangleID(to: localHit)?.rawValue else {
                     continue
                 }
                 NSLog(
@@ -667,26 +719,26 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
 
     private func resolveSurfaceSelection(
         for hit: SCNHitTestResult,
-        in mesh: MeshTopology
+        in selectionModel: SelectionModel
     ) -> SurfaceSelectionCandidate? {
         let hitLocal = simdVector(hit.localCoordinates)
-        guard let seedTriangle = mesh.closestTriangleIndex(to: hitLocal) else {
+        guard let seedTriangle = selectionModel.closestTriangleID(to: hitLocal) else {
             return nil
         }
 
-        let threshold = localSurfaceSelectionDistanceThreshold(for: mesh)
-        let nearestFeatureEdgeDistance = mesh.nearestFeatureEdgeDistance(to: hitLocal)
+        let threshold = localSurfaceSelectionDistanceThreshold(for: selectionModel)
+        let nearestFeatureEdgeDistance = selectionModel.nearestFeatureEdgeDistance(to: hitLocal)
         guard nearestFeatureEdgeDistance > threshold else {
             return nil
         }
 
-        let surfaceTriangles = mesh.inferredSurfaceTriangles(startingFrom: seedTriangle)
+        let surfaceTriangles = selectionModel.surfacePatch(forTriangle: seedTriangle)?.triangleIDs.map(\.rawValue) ?? []
         guard !surfaceTriangles.isEmpty else {
             return nil
         }
 
         return SurfaceSelectionCandidate(
-            seedTriangle: seedTriangle,
+            seedTriangle: seedTriangle.rawValue,
             triangleIndices: surfaceTriangles,
             nearestFeatureEdgeDistance: nearestFeatureEdgeDistance,
             edgePromotionThreshold: threshold
@@ -1038,7 +1090,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
 
         guard let hit = hits.first(where: { !isSelectionOverlay($0.node) }),
               let geometry = hit.node.geometry,
-              let mesh = MeshTopology(geometry: geometry, settings: edgeFitSettings)
+              let selectionModel = selectionModel(for: geometry)
         else {
             return SurfaceProbeRecord(
                 producedAt: ISO8601DateFormatter().string(from: Date()),
@@ -1073,20 +1125,23 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             simdVector(hit.node.convertVector(scnVector(localNormal), to: nil)),
             fallback: SIMD3<Float>(0, 1, 0)
         )
-        let seedTriangle = mesh.closestTriangleIndex(to: hitLocal)
-        let surfaceCandidate = resolveSurfaceSelection(for: hit, in: mesh)
-        let edgeCandidates = nearestEdgeCandidates(for: hit, in: mesh)
+        let seedTriangle = selectionModel.closestTriangleID(to: hitLocal)?.rawValue
+        let surfaceCandidate = resolveSurfaceSelection(for: hit, in: selectionModel)
+        let mesh = meshTopology(for: geometry)
+        let edgeCandidates = mesh.map { nearestEdgeCandidates(for: hit, in: $0) } ?? []
         let edgeSelectionRadius = edgeSelectionWorldRadius(for: hit)
         let localRay = localRayThroughScreenPoint(point, in: hit.node)
-        let bestEdge = resolveBestDownloadSelection(
-            from: edgeCandidates,
-            mesh: mesh,
-            hit: hit,
-            node: hit.node,
-            edgeRadius: edgeSelectionRadius,
-            rayOrigin: localRay?.origin,
-            rayDirection: localRay?.direction
-        )
+        let bestEdge = mesh.flatMap {
+            resolveBestDownloadSelection(
+                from: edgeCandidates,
+                mesh: $0,
+                hit: hit,
+                node: hit.node,
+                edgeRadius: edgeSelectionRadius,
+                rayOrigin: localRay?.origin,
+                rayDirection: localRay?.direction
+            )
+        }
         let note: String
         if resolvedKind == "edge", surfaceCandidate != nil {
             note = "Surface candidate existed, but final resolver chose edge. This is the edge-priority/auto-aim failure case."
@@ -1114,8 +1169,8 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             seedTriangle: seedTriangle,
             surfacePromoted: surfaceCandidate != nil,
             surfaceTriangleCount: surfaceCandidate?.triangleIndices.count ?? 0,
-            nearestFeatureEdgeDistance: surfaceCandidate?.nearestFeatureEdgeDistance ?? mesh.nearestFeatureEdgeDistance(to: hitLocal),
-            surfacePromotionThreshold: localSurfaceSelectionDistanceThreshold(for: mesh),
+            nearestFeatureEdgeDistance: surfaceCandidate?.nearestFeatureEdgeDistance ?? selectionModel.nearestFeatureEdgeDistance(to: hitLocal),
+            surfacePromotionThreshold: localSurfaceSelectionDistanceThreshold(for: selectionModel),
             edgeCandidateCount: edgeCandidates.count,
             bestEdgeDistance: bestEdgeSnap?.distance,
             bestEdgeIsFeature: bestEdgeSnap?.isFeatureEdge,
@@ -1498,7 +1553,11 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         max(mesh.maxExtent * 0.00008, 0.001)
     }
 
-private func shouldPromoteSurfaceOver(
+    private func localSurfaceSelectionDistanceThreshold(for selectionModel: SelectionModel) -> Float {
+        max(selectionModel.maxExtent * 0.00008, 0.001)
+    }
+
+    private func shouldPromoteSurfaceOver(
         selected: EdgeSelectionCandidate?,
         nearestFeatureEdgeDistance: Float?,
         surfaceCandidate: SurfaceSelectionCandidate?,
@@ -1713,11 +1772,12 @@ func applyAutomatedSurfaceSelectionOverlay(to scene: SCNScene) -> SurfaceOverlay
     }
 
     if let hit = frontmostSurfaceSeed(from: scene, cameraNode: cameraNode) {
-        let component = hit.mesh.inferredSurfaceTriangles(startingFrom: hit.triangleIndex)
+        let triangleID = SelectionTriangleID(rawValue: hit.triangleIndex)
+        let component = hit.selectionModel.surfacePatch(forTriangle: triangleID)?.triangleIDs.map(\.rawValue) ?? []
         if !component.isEmpty,
            let selectedGeometry = makeSurfaceSelectionGeometry(
             triangleIndices: component,
-            mesh: hit.mesh,
+            selectionModel: hit.selectionModel,
             baseMaterial: hit.node.geometry?.materials.first
            ) {
             hit.node.geometry = selectedGeometry
@@ -1729,18 +1789,18 @@ func applyAutomatedSurfaceSelectionOverlay(to scene: SCNScene) -> SurfaceOverlay
         }
     }
 
-    var best: (node: SCNNode, mesh: MeshTopology, triangles: [Int], score: Float)?
+    var best: (node: SCNNode, selectionModel: SelectionModel, triangles: [Int], score: Float)?
 
     scene.rootNode.enumerateChildNodes { node, _ in
         guard node.name != selectionRootName,
               let geometry = node.geometry,
-              let mesh = MeshTopology(geometry: geometry, settings: .init()) else {
+              let selectionModel = SelectionModel(geometry: geometry) else {
             return
         }
 
         var visited: Set<Int> = []
-        for triangleIndex in mesh.triangles.indices where !visited.contains(triangleIndex) {
-            let component = mesh.inferredSurfaceTriangles(startingFrom: triangleIndex)
+        for triangle in selectionModel.triangles where !visited.contains(triangle.id.rawValue) {
+            let component = selectionModel.surfacePatch(forTriangle: triangle.id)?.triangleIDs.map(\.rawValue) ?? []
             guard !component.isEmpty else {
                 continue
             }
@@ -1749,11 +1809,11 @@ func applyAutomatedSurfaceSelectionOverlay(to scene: SCNScene) -> SurfaceOverlay
             let score = surfaceOverlayScore(
                 component,
                 using: node,
-                mesh: mesh,
+                selectionModel: selectionModel,
                 cameraNode: cameraNode
             )
             if score > (best?.score ?? -Float.greatestFiniteMagnitude) {
-                best = (node, mesh, component, score)
+                best = (node, selectionModel, component, score)
             }
         }
     }
@@ -1761,7 +1821,7 @@ func applyAutomatedSurfaceSelectionOverlay(to scene: SCNScene) -> SurfaceOverlay
     guard let best,
           let selectedGeometry = makeSurfaceSelectionGeometry(
             triangleIndices: best.triangles,
-            mesh: best.mesh,
+            selectionModel: best.selectionModel,
             baseMaterial: best.node.geometry?.materials.first
           ) else {
         return SurfaceOverlayTestResult(applied: false, triangleCount: 0, nodeName: nil)
@@ -1778,27 +1838,27 @@ func applyAutomatedSurfaceSelectionOverlay(to scene: SCNScene) -> SurfaceOverlay
 private func frontmostSurfaceSeed(
     from scene: SCNScene,
     cameraNode: SCNNode
-) -> (node: SCNNode, mesh: MeshTopology, triangleIndex: Int)? {
+) -> (node: SCNNode, selectionModel: SelectionModel, triangleIndex: Int)? {
     let origin = cameraNode.simdWorldPosition
     var direction = qlsNormalized(cameraNode.simdWorldFront, fallback: SIMD3<Float>(0, 0, -1))
     if !direction.x.isFinite || !direction.y.isFinite || !direction.z.isFinite {
         direction = qlsNormalized(-origin, fallback: SIMD3<Float>(0, 0, -1))
     }
 
-    var best: (node: SCNNode, mesh: MeshTopology, triangleIndex: Int, distance: Float)?
+    var best: (node: SCNNode, selectionModel: SelectionModel, triangleIndex: Int, distance: Float)?
 
     scene.rootNode.enumerateChildNodes { node, _ in
         guard let geometry = node.geometry,
-              let mesh = MeshTopology(geometry: geometry, settings: .init()) else {
+              let selectionModel = SelectionModel(geometry: geometry) else {
             return
         }
 
-        for (triangleIndex, triangle) in mesh.triangles.enumerated() {
-            let points = triangle.indices.compactMap { index -> SIMD3<Float>? in
-                guard index >= 0, index < mesh.vertices.count else {
+        for triangle in selectionModel.triangles {
+            let points = triangle.vertexIndices.compactMap { index -> SIMD3<Float>? in
+                guard index >= 0, index < selectionModel.vertices.count else {
                     return nil
                 }
-                return qlsSIMD(node.convertPosition(qlsSCN(mesh.vertices[index]), to: nil))
+                return qlsSIMD(node.convertPosition(qlsSCN(selectionModel.vertices[index]), to: nil))
             }
             guard points.count == 3,
                   let distance = rayTriangleDistance(
@@ -1812,7 +1872,7 @@ private func frontmostSurfaceSeed(
             }
 
             if distance < (best?.distance ?? Float.greatestFiniteMagnitude) {
-                best = (node, mesh, triangleIndex, distance)
+                best = (node, selectionModel, triangle.id.rawValue, distance)
             }
         }
     }
@@ -1820,7 +1880,7 @@ private func frontmostSurfaceSeed(
     guard let best else {
         return nil
     }
-    return (best.node, best.mesh, best.triangleIndex)
+    return (best.node, best.selectionModel, best.triangleIndex)
 }
 
 private func rayTriangleDistance(
@@ -1859,7 +1919,7 @@ private func rayTriangleDistance(
 private func surfaceOverlayScore(
     _ triangleIndices: [Int],
     using node: SCNNode,
-    mesh: MeshTopology,
+    selectionModel: SelectionModel,
     cameraNode: SCNNode
 ) -> Float {
     var area: Float = 0
@@ -1867,11 +1927,10 @@ private func surfaceOverlayScore(
     var weightedCentroid = SIMD3<Float>(repeating: 0)
 
     for triangleIndex in triangleIndices {
-        guard triangleIndex >= 0, triangleIndex < mesh.triangles.count else {
+        guard let triangle = selectionModel.triangle(SelectionTriangleID(rawValue: triangleIndex)) else {
             continue
         }
-        let triangle = mesh.triangles[triangleIndex]
-        let localPoints = triangle.indices.map { mesh.vertices[$0] }
+        let localPoints = triangle.vertexIndices.map { selectionModel.vertices[$0] }
         let worldPoints = localPoints.map {
             qlsSIMD(node.convertPosition(qlsSCN($0), to: nil))
         }
@@ -1898,7 +1957,7 @@ private func surfaceOverlayScore(
 
 private func makeSurfaceSelectionGeometry(
     triangleIndices: [Int],
-    mesh: MeshTopology,
+    selectionModel: SelectionModel,
     baseMaterial: SCNMaterial?
 ) -> SCNGeometry? {
     let selected = Set(triangleIndices)
@@ -1910,19 +1969,20 @@ private func makeSurfaceSelectionGeometry(
     var normals: [SCNVector3] = []
     var baseIndices: [UInt32] = []
     var selectedIndices: [UInt32] = []
-    vertices.reserveCapacity(mesh.triangles.count * 3)
-    normals.reserveCapacity(mesh.triangles.count * 3)
-    baseIndices.reserveCapacity(mesh.triangles.count * 3)
+    vertices.reserveCapacity(selectionModel.triangles.count * 3)
+    normals.reserveCapacity(selectionModel.triangles.count * 3)
+    baseIndices.reserveCapacity(selectionModel.triangles.count * 3)
     selectedIndices.reserveCapacity(selected.count * 3)
 
-    for (triangleIndex, triangle) in mesh.triangles.enumerated() {
+    for triangle in selectionModel.triangles {
+        let triangleIndex = triangle.id.rawValue
         let targetIsSelected = selected.contains(triangleIndex)
-        for vertexIndex in triangle.indices {
-            guard vertexIndex >= 0, vertexIndex < mesh.vertices.count else {
+        for vertexIndex in triangle.vertexIndices {
+            guard vertexIndex >= 0, vertexIndex < selectionModel.vertices.count else {
                 continue
             }
 
-            vertices.append(qlsSCN(mesh.vertices[vertexIndex]))
+            vertices.append(qlsSCN(selectionModel.vertices[vertexIndex]))
             normals.append(qlsSCN(triangle.normal))
             let index = UInt32(vertices.count - 1)
             if targetIsSelected {

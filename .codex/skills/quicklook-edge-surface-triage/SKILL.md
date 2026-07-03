@@ -149,6 +149,25 @@ testing/scripts/verify_quicklook_ui_launch.sh
 - `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
 - Before replacing `MeshTopology` calls, compare `SelectionModel.nearestFeatureEdgeDistance(to:)`, `surfacePatch(forTriangle:)`, and `edgeLoop(containing:)` against the existing view behavior on the same hit triangle/edge.
 
+## 2026-07-03 Update
+
+### Problem context
+- SceneKit click/probe/visible-overlay flows still rebuilt mesh topology even after `SelectionModel` existed, so surface selection accuracy and speed did not benefit from the new shared model.
+
+### What changed
+- Wired `SceneKitView` to cache `SelectionModel` per `SCNGeometry` and use it for surface candidate resolution, nearest feature-edge distance, surface probe records, and automated visible-surface overlays.
+- Kept cached legacy `MeshTopology` only for the fitted edge-chain compatibility path until edge fitting fully moves into the selection engine.
+
+### Why it helped
+- Surface selection now runs through one reusable CAD-like topology model instead of rebuilding a view-local mesh for every click and test overlay.
+- The remaining edge path is isolated, making the next refactor step smaller: port fitted edge-chain extraction into `SelectionModel`.
+
+### Validation
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- `testing/surface-selection/scripts/run_surface_layer_test.sh`
+- `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`
+- After merging probe script fixes, rerun `testing/surface-selection/scripts/run_visible_surface_overlay_test.sh`.
+
 ## 2026-07-02 Update
 
 ### Problem context
