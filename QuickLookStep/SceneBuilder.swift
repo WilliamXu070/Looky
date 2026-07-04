@@ -455,8 +455,7 @@ enum SceneBuilder {
             }
         }
 
-        let converterLookup = solidWorksConverterLookup()
-        if let converter = converterLookup.url {
+        if let converter = solidWorksConverterURL() {
             do {
                 let convertedURL = try convertedSolidWorksSidecarURL(for: url, converterURL: converter)
                 let result = try solidWorksSceneLoadResult(from: convertedURL, sourceURL: url, sourceFormat: primaryFormat, sourceKind: "local-converter", fallbackReasons: fallbackReasons)
@@ -467,11 +466,11 @@ enum SceneBuilder {
                 NSLog("SolidWorks local converter failed for %@ with %@", url.path, error as NSError)
             }
         } else {
-            fallbackReasons.append("local-converter:\(converterLookup.diagnostic)")
+            fallbackReasons.append("local-converter:QLS_SOLIDWORKS_CONVERTER-not-set")
         }
 
         throw SceneBuilderError.conversionFailed(
-            "SolidWorks .\(url.pathExtension) requires an exported STEP/STL/OBJ/3MF/GLB sidecar or configured local converter; \(converterLookup.diagnostic); native SolidWorks B-rep import is not available in this build"
+            "SolidWorks .\(url.pathExtension) requires an exported STEP/STL/OBJ/3MF/GLB sidecar or QLS_SOLIDWORKS_CONVERTER local converter; native SolidWorks B-rep import is not available in this build"
         )
     }
 
@@ -503,74 +502,18 @@ enum SceneBuilder {
         return SceneLoadResult(scene: result.scene, method: "solidworks-\(sourceKind)", metadata: metadata)
     }
 
-    private struct SolidWorksConverterLookup {
-        let url: URL?
-        let diagnostic: String
-    }
-
-    private static func solidWorksConverterLookup() -> SolidWorksConverterLookup {
-        var rejected: [String] = []
-        for candidate in solidWorksConverterPathCandidates() {
-            let expanded = NSString(string: candidate.value).expandingTildeInPath
-            let url = URL(fileURLWithPath: expanded)
-            if FileManager.default.isExecutableFile(atPath: url.path) {
-                NSLog("Using SolidWorks converter from %@: %@", candidate.source, url.path)
-                return SolidWorksConverterLookup(url: url, diagnostic: "converter=\(candidate.source)")
-            }
-            NSLog("Ignoring non-executable SolidWorks converter from %@: %@", candidate.source, url.path)
-            rejected.append("\(candidate.source)-not-executable:\(url.path)")
-        }
-
-        if !rejected.isEmpty {
-            return SolidWorksConverterLookup(url: nil, diagnostic: rejected.joined(separator: " | "))
-        }
-
-        return SolidWorksConverterLookup(
-            url: nil,
-            diagnostic: "no converter configured; set QLS_SOLIDWORKS_CONVERTER env or defaults key com.johnboiles.QuickLookStep QLS_SOLIDWORKS_CONVERTER"
-        )
-    }
-
-    private static func solidWorksConverterPathCandidates() -> [(source: String, value: String)] {
-        let keys = ["QLS_SOLIDWORKS_CONVERTER", "solidWorksConverterPath"]
-        var candidates: [(String, String)] = []
-
-        if let value = ProcessInfo.processInfo.environment["QLS_SOLIDWORKS_CONVERTER"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !value.isEmpty {
-            candidates.append(("env:QLS_SOLIDWORKS_CONVERTER", value))
-        }
-
-        for key in keys {
-            if let value = UserDefaults.standard.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !value.isEmpty {
-                candidates.append(("defaults:\(key)", value))
-            }
-        }
-
-        for key in keys {
-            if let value = solidWorksConverterPathFromPreferencesFile(key: key)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !value.isEmpty {
-                candidates.append(("container-preferences:\(key)", value))
-            }
-        }
-
-        return candidates
-    }
-
-    private static func solidWorksConverterPathFromPreferencesFile(key: String) -> String? {
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library", isDirectory: true)
-            .appendingPathComponent("Containers", isDirectory: true)
-            .appendingPathComponent("com.johnboiles.QuickLookStep", isDirectory: true)
-            .appendingPathComponent("Data", isDirectory: true)
-            .appendingPathComponent("Library", isDirectory: true)
-            .appendingPathComponent("Preferences", isDirectory: true)
-            .appendingPathComponent("com.johnboiles.QuickLookStep.plist")
-
-        guard let values = NSDictionary(contentsOf: url) as? [String: Any] else {
+    private static func solidWorksConverterURL() -> URL? {
+        guard let value = ProcessInfo.processInfo.environment["QLS_SOLIDWORKS_CONVERTER"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
             return nil
         }
-        return values[key] as? String
+
+        let expanded = NSString(string: value).expandingTildeInPath
+        let url = URL(fileURLWithPath: expanded)
+        guard FileManager.default.isExecutableFile(atPath: url.path) else {
+            return nil
+        }
+        return url
     }
 
     private static func convertedSolidWorksSidecarURL(for sourceURL: URL, converterURL: URL) throws -> URL {
