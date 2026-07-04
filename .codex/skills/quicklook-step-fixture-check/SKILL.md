@@ -190,3 +190,18 @@ For click bugs, use `quicklook-edge-selection-debug`. The main learned failure m
 ### Validation
 - Open `/Users/williamxu/Downloads/spur-gear-415.snapshot.1/Gear.SLDPRT` without a real sidecar and confirm no cached fake `Gear.obj` appears under `~/Library/Caches/QuickLookStep/SolidWorksConversions`.
 - Confirm logs show Model I/O / SceneKit native import failure instead of `solidworks-local-converter`.
+
+## 2026-07-04 Update
+
+### Problem context
+- A local `.SLDPRT` to `.STEP` cache test for `/Users/williamxu/Downloads/spur-gear-415.snapshot.1/Gear.SLDPRT` could not run because no real CAD Exchanger `ExchangerConv` binary was installed.
+
+### What changed
+- Documented the real conversion gate: do not implement or test `.SLDPRT` conversion unless `ExchangerConv` or an equivalent real SolidWorks-capable converter is present. CAD Assistant / OpenCascade-style open-format tools are not enough for this fixture.
+
+### Why it helped
+- Prevents repeating a fake or impossible conversion path and makes the next step explicit: install/configure a real converter, then cache the produced `.step` and render that.
+
+### Validation
+- Local harness result: `missing_converter=ExchangerConv`.
+- A valid test must first find `CADEX_CONVERTER` or a bundled CAD Exchanger Lab `ExchangerConv`, then produce a non-empty `Gear.step` before launching QuickLookStep.
