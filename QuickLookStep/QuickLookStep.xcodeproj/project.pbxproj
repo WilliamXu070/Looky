@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A10000012E30000100000001 /* GLTFKit2 in Frameworks */ = {isa = PBXBuildFile; productRef = A10000042E30000100000004 /* GLTFKit2 */; };
+		A10000022E30000100000002 /* GLTFKit2 in Frameworks */ = {isa = PBXBuildFile; productRef = A10000052E30000100000005 /* GLTFKit2 */; };
+		A10000032E30000100000003 /* GLTFKit2 in Frameworks */ = {isa = PBXBuildFile; productRef = A10000062E30000100000006 /* GLTFKit2 */; };
 		42E196DC2E25781E009F11FB /* QuickLookThumbnailing.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42E196DB2E25781E009F11FB /* QuickLookThumbnailing.framework */; };
 		42E196DE2E25781E009F11FB /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42E196DD2E25781E009F11FB /* Quartz.framework */; };
 		42E196E62E25781E009F11FB /* StepThumbnail.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42E196D92E25781D009F11FB /* StepThumbnail.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -124,6 +127,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000012E30000100000001 /* GLTFKit2 in Frameworks */,
 				42EF487E2E25818200C63E21 /* libfoxtrot_universal.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -132,6 +136,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000022E30000100000002 /* GLTFKit2 in Frameworks */,
 				42EF487D2E25818200C63E21 /* libfoxtrot_universal.a in Frameworks */,
 				42E196DC2E25781E009F11FB /* QuickLookThumbnailing.framework in Frameworks */,
 				42E196DE2E25781E009F11FB /* Quartz.framework in Frameworks */,
@@ -142,6 +147,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000032E30000100000003 /* GLTFKit2 in Frameworks */,
 				42EF487C2E25818200C63E21 /* libfoxtrot_universal.a in Frameworks */,
 				42E196F12E257832009F11FB /* Quartz.framework in Frameworks */,
 			);
@@ -208,6 +214,7 @@
 			);
 			name = QuickLookStep;
 			packageProductDependencies = (
+				A10000042E30000100000004 /* GLTFKit2 */,
 			);
 			productName = QuickLookStep;
 			productReference = 42E196C62E2577BA009F11FB /* QuickLookStep.app */;
@@ -230,6 +237,7 @@
 			);
 			name = StepThumbnail;
 			packageProductDependencies = (
+				A10000052E30000100000005 /* GLTFKit2 */,
 			);
 			productName = StepThumbnail;
 			productReference = 42E196D92E25781D009F11FB /* StepThumbnail.appex */;
@@ -252,6 +260,7 @@
 			);
 			name = StepPreview;
 			packageProductDependencies = (
+				A10000062E30000100000006 /* GLTFKit2 */,
 			);
 			productName = StepPreview;
 			productReference = 42E196F02E257832009F11FB /* StepPreview.appex */;
@@ -287,6 +296,9 @@
 			);
 			mainGroup = 42E196BD2E2577BA009F11FB;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A10000072E30000100000007 /* XCRemoteSwiftPackageReference "GLTFKit2" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 42E196C72E2577BA009F11FB /* Products */;
 			projectDirPath = "";
@@ -722,6 +734,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A10000072E30000100000007 /* XCRemoteSwiftPackageReference "GLTFKit2" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/warrenm/GLTFKit2.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.5.15;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A10000042E30000100000004 /* GLTFKit2 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000072E30000100000007 /* XCRemoteSwiftPackageReference "GLTFKit2" */;
+			productName = GLTFKit2;
+		};
+		A10000052E30000100000005 /* GLTFKit2 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000072E30000100000007 /* XCRemoteSwiftPackageReference "GLTFKit2" */;
+			productName = GLTFKit2;
+		};
+		A10000062E30000100000006 /* GLTFKit2 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000072E30000100000007 /* XCRemoteSwiftPackageReference "GLTFKit2" */;
+			productName = GLTFKit2;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 42E196BE2E2577BA009F11FB /* Project object */;
 }

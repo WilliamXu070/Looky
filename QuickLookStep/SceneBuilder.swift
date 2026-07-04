@@ -3,6 +3,9 @@ import SceneKit.ModelIO
 import Cocoa
 import Quartz
 import ModelIO
+#if canImport(GLTFKit2)
+import GLTFKit2
+#endif
 #if canImport(AssetImportKit)
 import AssetImportKit
 #endif
@@ -183,6 +186,30 @@ enum SceneBuilder {
     private static func sceneFromGLTFFileOrConvertWithTrace(_ url: URL, primaryFormat: LoadFormat) throws -> SceneLoadResult {
         var fallbackReasons: [String] = []
 
+        #if canImport(GLTFKit2)
+        do {
+            let scene = try sceneFromGLTFKit2File(url)
+            return SceneLoadResult(
+                scene: scene,
+                method: "gltfkit2",
+                metadata: importDiagnosticsMetadata(
+                    for: scene,
+                    url: url,
+                    method: "gltfkit2",
+                    format: primaryFormat,
+                    materialQuality: "native-gltf",
+                    degradationReason: nil,
+                    fallbackReason: nil
+                )
+            )
+        } catch {
+            fallbackReasons.append("gltfkit2:\(shortErrorDescription(error))")
+            NSLog("GLTFKit2 load failed for %@ with %@", url.path, error as NSError)
+        }
+        #else
+        fallbackReasons.append("gltfkit2:module-unavailable")
+        #endif
+
         do {
             let scene = try sceneFromModelIOFile(url)
             return SceneLoadResult(
@@ -267,6 +294,33 @@ enum SceneBuilder {
             throw error
         }
     }
+
+    #if canImport(GLTFKit2)
+    private static func sceneFromGLTFKit2File(_ url: URL) throws -> SCNScene {
+        if ProcessInfo.processInfo.environment["QLS_DISABLE_GLTFKIT2"] == "1" {
+            throw SceneBuilderError.conversionFailed("GLTFKit2 disabled by QLS_DISABLE_GLTFKIT2=1")
+        }
+
+        let start = CFAbsoluteTimeGetCurrent()
+        let asset = try GLTFAsset(url: url, options: [:])
+        let imported = SCNScene(gltfAsset: asset)
+        let sourceChildren = imported.rootNode.childNodes
+        guard !sourceChildren.isEmpty else {
+            throw SceneBuilderError.emptyModel(url)
+        }
+
+        let modelRoot = SCNNode()
+        modelRoot.name = "model-root"
+        for child in sourceChildren {
+            child.removeFromParentNode()
+            modelRoot.addChildNode(child)
+        }
+
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+        NSLog("GLTFKit2 loaded %@ in %.2f ms", url.path, elapsed)
+        return try buildStandardizedScene(from: modelRoot, fileName: url.lastPathComponent)
+    }
+    #endif
 
     private static func sceneFromSceneKitFileOrConvertWithTrace(_ url: URL, primaryFormat: LoadFormat) throws -> SceneLoadResult {
         do {

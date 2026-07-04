@@ -163,3 +163,20 @@ xcodebuild \
 
 ### example usage
 - When push fails with the p12 message, inspect secrets in the workflow settings first; use fork pushes to validate without release signing, then add `MACOS_CERTIFICATE_P12_BASE64` and `MACOS_CERTIFICATE_PASSWORD` before publishing tagged releases.
+
+## 2026-07-04 Update
+
+### Problem context
+- Large `.glb` files were falling through Model I/O and SceneKit into the Python/trimesh mesh-conversion fallback, adding double-digit seconds of cold-load latency.
+
+### What changed
+- Added guidance for the native GLTFKit2 loader path in `SceneBuilder`: GLTFKit2 runs before Model I/O, SceneKit, AssetImportKit, and Python conversion, and can be disabled with `QLS_DISABLE_GLTFKIT2=1` for fallback comparison.
+
+### Why it helped
+- Keeps GLB/glTF troubleshooting focused on the fast native importer first, while preserving the old conversion path only as a diagnostic fallback.
+
+### Validation
+- `xcodebuild -resolvePackageDependencies -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -derivedDataPath build`
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app "/Users/williamxu/Downloads/godzilla-evolved-from-lukiethewesely13/source/Godzilla Evolved.glb" /tmp/quicklook-ui-launch-check-godzilla-gltfkit2.png`
+- Check app stdout for `loadMethod = gltfkit2`; use `QLS_DISABLE_GLTFKIT2=1` to compare against the old fallback path.
