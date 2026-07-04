@@ -446,31 +446,24 @@ enum SceneBuilder {
 
         if let sidecarURL = solidWorksSidecarModelURL(for: url) {
             do {
-                let result = try solidWorksSceneLoadResult(from: sidecarURL, sourceURL: url, sourceFormat: primaryFormat, sourceKind: "sidecar-export", fallbackReasons: fallbackReasons)
+                let result = try sceneWithTrace(for: sidecarURL)
+                var metadata = result.metadata
+                metadata["loadMethod"] = "solidworks-sidecar-\(result.method)"
+                metadata["sourceFormat"] = primaryFormat.rawValue
+                metadata["sidecarPath"] = sidecarURL.path
+                metadata["sidecarFormat"] = sidecarURL.pathExtension.lowercased()
+                metadata["solidWorksGeometrySource"] = "sidecar-export"
+                metadata["fallbackReason"] = fallbackReasons.joined(separator: " | ")
                 NSLog("Loaded %@ via SolidWorks sidecar %@", url.path, sidecarURL.path)
-                return result
+                return SceneLoadResult(scene: result.scene, method: "solidworks-sidecar", metadata: metadata)
             } catch {
                 fallbackReasons.append("sidecar:\(shortErrorDescription(error))")
                 NSLog("SolidWorks sidecar load failed for %@ with %@", sidecarURL.path, error as NSError)
             }
         }
 
-        if let converter = solidWorksConverterURL() {
-            do {
-                let convertedURL = try convertedSolidWorksSidecarURL(for: url, converterURL: converter)
-                let result = try solidWorksSceneLoadResult(from: convertedURL, sourceURL: url, sourceFormat: primaryFormat, sourceKind: "local-converter", fallbackReasons: fallbackReasons)
-                NSLog("Loaded %@ via SolidWorks local converter output %@", url.path, convertedURL.path)
-                return result
-            } catch {
-                fallbackReasons.append("local-converter:\(shortErrorDescription(error))")
-                NSLog("SolidWorks local converter failed for %@ with %@", url.path, error as NSError)
-            }
-        } else {
-            fallbackReasons.append("local-converter:QLS_SOLIDWORKS_CONVERTER-not-set")
-        }
-
         throw SceneBuilderError.conversionFailed(
-            "SolidWorks .\(url.pathExtension) requires an exported STEP/STL/OBJ/3MF/GLB sidecar or QLS_SOLIDWORKS_CONVERTER local converter; native SolidWorks B-rep import is not available in this build"
+            "SolidWorks .\(url.pathExtension) requires an exported STEP/STL/OBJ/3MF/GLB sidecar; native SolidWorks B-rep import is not available in this build"
         )
     }
 
@@ -481,145 +474,6 @@ enum SceneBuilder {
     private static func solidWorksSidecarModelURL(for url: URL) -> URL? {
         let preferredExtensions = ["step", "stp", "3mf", "glb", "gltf", "obj", "stl"]
         return siblingURL(for: url, extensions: preferredExtensions)
-    }
-
-    private static func solidWorksSceneLoadResult(
-        from outputURL: URL,
-        sourceURL: URL,
-        sourceFormat: LoadFormat,
-        sourceKind: String,
-        fallbackReasons: [String]
-    ) throws -> SceneLoadResult {
-        let result = try sceneWithTrace(for: outputURL)
-        var metadata = result.metadata
-        metadata["loadMethod"] = "solidworks-\(sourceKind)-\(result.method)"
-        metadata["sourceFormat"] = sourceFormat.rawValue
-        metadata["solidWorksOutputPath"] = outputURL.path
-        metadata["solidWorksOutputFormat"] = outputURL.pathExtension.lowercased()
-        metadata["solidWorksGeometrySource"] = sourceKind
-        metadata["solidWorksSourcePath"] = sourceURL.path
-        metadata["fallbackReason"] = fallbackReasons.joined(separator: " | ")
-        return SceneLoadResult(scene: result.scene, method: "solidworks-\(sourceKind)", metadata: metadata)
-    }
-
-    private static func solidWorksConverterURL() -> URL? {
-        guard let value = ProcessInfo.processInfo.environment["QLS_SOLIDWORKS_CONVERTER"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-
-        let expanded = NSString(string: value).expandingTildeInPath
-        let url = URL(fileURLWithPath: expanded)
-        guard FileManager.default.isExecutableFile(atPath: url.path) else {
-            return nil
-        }
-        return url
-    }
-
-    private static func convertedSolidWorksSidecarURL(for sourceURL: URL, converterURL: URL) throws -> URL {
-        let outputDirectory = try solidWorksConversionOutputDirectory(for: sourceURL)
-        let existing = solidWorksModelURL(in: outputDirectory, basename: sourceURL.deletingPathExtension().lastPathComponent)
-        if let existing {
-            NSLog("Using cached SolidWorks converter output %@", existing.path)
-            return existing
-        }
-
-        let process = Process()
-        process.executableURL = converterURL
-        process.arguments = [sourceURL.path, outputDirectory.path]
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        let start = CFAbsoluteTimeGetCurrent()
-        try process.run()
-        process.waitUntilExit()
-        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
-
-        let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-
-        guard process.terminationStatus == 0 else {
-            throw SceneBuilderError.conversionFailed("SolidWorks converter failed with exit \(process.terminationStatus): \(stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
-        }
-
-        let printedOutput = stdout
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty }
-
-        if let printedOutput {
-            let printedURL = URL(fileURLWithPath: NSString(string: printedOutput).expandingTildeInPath)
-            if isSupportedSolidWorksOutput(printedURL), FileManager.default.fileExists(atPath: printedURL.path) {
-                NSLog("SolidWorks converter produced %@ in %.2f ms", printedURL.path, elapsed)
-                return printedURL
-            }
-        }
-
-        if let generated = solidWorksModelURL(in: outputDirectory, basename: sourceURL.deletingPathExtension().lastPathComponent) {
-            NSLog("SolidWorks converter produced %@ in %.2f ms", generated.path, elapsed)
-            return generated
-        }
-
-        throw SceneBuilderError.conversionFailed("SolidWorks converter completed but did not produce STEP/STL/OBJ/3MF/GLB output in \(outputDirectory.path)")
-    }
-
-    private static func solidWorksConversionOutputDirectory(for sourceURL: URL) throws -> URL {
-        let manager = FileManager.default
-        let caches = try manager.url(
-            for: .cachesDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let sourceFingerprint = try solidWorksSourceFingerprint(for: sourceURL)
-        let outputDirectory = caches
-            .appendingPathComponent("QuickLookStep", isDirectory: true)
-            .appendingPathComponent("SolidWorksConversions", isDirectory: true)
-            .appendingPathComponent(sourceFingerprint, isDirectory: true)
-        try manager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-        return outputDirectory
-    }
-
-    private static func solidWorksSourceFingerprint(for sourceURL: URL) throws -> String {
-        let attributes = try FileManager.default.attributesOfItem(atPath: sourceURL.path)
-        let size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
-        let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        let source = "\(sourceURL.path)|\(size)|\(modified)"
-        var hash: UInt64 = 0xcbf29ce484222325
-        let prime: UInt64 = 0x100000001b3
-        for byte in source.utf8 {
-            hash ^= UInt64(byte)
-            hash = hash &* prime
-        }
-        return String(format: "%016llx", hash)
-    }
-
-    private static func solidWorksModelURL(in directory: URL, basename: String) -> URL? {
-        let preferredExtensions = ["step", "stp", "3mf", "glb", "gltf", "obj", "stl"]
-        let manager = FileManager.default
-
-        for ext in preferredExtensions {
-            let exact = directory.appendingPathComponent(basename).appendingPathExtension(ext)
-            if manager.fileExists(atPath: exact.path) {
-                return exact
-            }
-            let uppercase = directory.appendingPathComponent(basename).appendingPathExtension(ext.uppercased())
-            if manager.fileExists(atPath: uppercase.path) {
-                return uppercase
-            }
-        }
-
-        guard let contents = try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
-            return nil
-        }
-        return contents.first { isSupportedSolidWorksOutput($0) }
-    }
-
-    private static func isSupportedSolidWorksOutput(_ url: URL) -> Bool {
-        ["step", "stp", "3mf", "glb", "gltf", "obj", "stl"].contains(url.pathExtension.lowercased())
     }
 
     private static func siblingURL(for url: URL, extensions: [String]) -> URL? {
