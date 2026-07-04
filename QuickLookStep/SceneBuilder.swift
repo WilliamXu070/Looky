@@ -462,25 +462,8 @@ enum SceneBuilder {
             }
         }
 
-        if let previewURL = solidWorksPreviewImageURL(for: url) {
-            let scene = try sceneFromPreviewImage(previewURL, sourceName: url.lastPathComponent)
-            var metadata = importDiagnosticsMetadata(
-                for: scene,
-                url: url,
-                method: "solidworks-preview-image",
-                format: primaryFormat,
-                materialQuality: "preview-image",
-                degradationReason: "solidworks-native-geometry-is-proprietary; rendered-sibling-preview-image-instead",
-                fallbackReason: fallbackReasons.joined(separator: " | ")
-            )
-            metadata["previewImagePath"] = previewURL.path
-            metadata["solidWorksGeometrySource"] = "preview-image"
-            NSLog("Loaded %@ via SolidWorks preview image %@", url.path, previewURL.path)
-            return SceneLoadResult(scene: scene, method: "solidworks-preview-image", metadata: metadata)
-        }
-
         throw SceneBuilderError.conversionFailed(
-            "SolidWorks .\(url.pathExtension) requires an exported STEP/STL/OBJ/3MF/GLB sidecar or a same-name preview image; native SolidWorks B-rep import is not available in this build"
+            "SolidWorks .\(url.pathExtension) requires an exported STEP/STL/OBJ/3MF/GLB sidecar; native SolidWorks B-rep import is not available in this build"
         )
     }
 
@@ -490,11 +473,6 @@ enum SceneBuilder {
 
     private static func solidWorksSidecarModelURL(for url: URL) -> URL? {
         let preferredExtensions = ["step", "stp", "3mf", "glb", "gltf", "obj", "stl"]
-        return siblingURL(for: url, extensions: preferredExtensions)
-    }
-
-    private static func solidWorksPreviewImageURL(for url: URL) -> URL? {
-        let preferredExtensions = ["jpg", "jpeg", "png", "heic", "tiff", "tif"]
         return siblingURL(for: url, extensions: preferredExtensions)
     }
 
@@ -566,43 +544,6 @@ enum SceneBuilder {
             NSLog("Failed to load converted mesh dump for %@ from %@: %@", sourceURL.path, jsonURL.path, error.localizedDescription)
             throw SceneBuilderError.conversionFailed("Unable to parse mesh conversion result")
         }
-    }
-
-    private static func sceneFromPreviewImage(_ imageURL: URL, sourceName: String) throws -> SCNScene {
-        guard let image = NSImage(contentsOf: imageURL), image.size.width > 0, image.size.height > 0 else {
-            throw SceneBuilderError.conversionFailed("Unable to load preview image \(imageURL.lastPathComponent)")
-        }
-
-        let longestSide: CGFloat = 100.0
-        let aspect = image.size.width / image.size.height
-        let width: CGFloat
-        let height: CGFloat
-        if aspect >= 1.0 {
-            width = longestSide
-            height = longestSide / aspect
-        } else {
-            width = longestSide * aspect
-            height = longestSide
-        }
-
-        let plane = SCNPlane(width: width, height: height)
-        plane.cornerRadius = 0
-
-        let material = SCNMaterial()
-        material.name = imageURL.lastPathComponent
-        material.lightingModel = .constant
-        material.diffuse.contents = image
-        material.isDoubleSided = true
-        plane.materials = [material]
-
-        let node = SCNNode(geometry: plane)
-        node.name = sourceName
-        node.eulerAngles.x = -.pi / 2
-
-        let modelRoot = SCNNode()
-        modelRoot.name = "model-root"
-        modelRoot.addChildNode(node)
-        return try buildStandardizedScene(from: modelRoot, fileName: sourceName)
     }
 
     private static func sceneFromMeshDump(_ dump: MeshDump) throws -> SCNNode {
@@ -1362,7 +1303,7 @@ enum SceneBuilder {
         case .glb:
             return "glb-usually-embedded-but-external-textures-can-be-used-as-recovery-overrides"
         case .sldprt, .sldasm:
-            return "solidworks-native-geometry-requires-sidecar-export-or-preview-image-fallback"
+            return "solidworks-native-geometry-requires-sidecar-export"
         default:
             return "not-applicable"
         }

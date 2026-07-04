@@ -151,12 +151,27 @@ For click bugs, use `quicklook-edge-selection-debug`. The main learned failure m
 - SolidWorks `.SLDPRT/.SLDASM` files are proprietary CAD containers; the local macOS stack does not expose native B-rep geometry for `Gear.SLDPRT`, and probes showed `MDLAsset.canImportFileExtension("sldprt") == false` plus SceneKit `NSCocoaErrorDomain Code=259`.
 
 ### What changed
-- Documented the QuickLookStep SolidWorks accommodation path: `SceneBuilder` registers `sldprt/sldasm`, tries Model I/O and SceneKit, then searches for same-name sidecar exports (`step/stp/3mf/glb/gltf/obj/stl`) before falling back to a same-name preview image such as `Gear.JPG`.
+- Documented the QuickLookStep SolidWorks accommodation path: `SceneBuilder` registers `sldprt/sldasm`, tries Model I/O and SceneKit, then searches for same-name sidecar exports (`step/stp/3mf/glb/gltf/obj/stl`).
 
 ### Why it helped
-- Lets downloaded SolidWorks snapshots open in the viewer when they include an exported mesh/CAD sidecar or preview image, while making clear that preview-image loads are not selectable/measurable parsed CAD geometry.
+- Lets downloaded SolidWorks snapshots open in the viewer only when they include exported 3D geometry, while avoiding false success from rendering a sibling preview image as a flat plane.
 
 ### Validation
 - `swift` probe: verify Model I/O reports `false` and SceneKit fails for `/Users/williamxu/Downloads/spur-gear-415.snapshot.1/Gear.SLDPRT`.
-- `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app "/Users/williamxu/Downloads/spur-gear-415.snapshot.1/Gear.SLDPRT" /tmp/quicklook-ui-launch-check-gear-sldprt.png`
-- Check app logs for `loadMethod = "solidworks-preview-image"` or `loadMethod = "solidworks-sidecar-..."`.
+- With no sidecar, check app logs for `SolidWorks .SLDPRT requires an exported STEP/STL/OBJ/3MF/GLB sidecar`.
+- With a same-name sidecar, check app logs for `loadMethod = "solidworks-sidecar-..."`.
+
+## 2026-07-04 Update
+
+### Problem context
+- `Gear.SLDPRT` appeared to open, but it was only the sibling `Gear.JPG` rendered as a flat SceneKit plane, not real SolidWorks geometry.
+
+### What changed
+- Removed the `solidworks-preview-image` fallback and deleted the preview image plane loader from `SceneBuilder`; SolidWorks files now require native import or an actual 3D sidecar export.
+
+### Why it helped
+- Prevents a 2D preview from masquerading as a loaded CAD model, which would break rotation, selection, measurement, and user trust.
+
+### Validation
+- Launch `/Users/williamxu/Downloads/spur-gear-415.snapshot.1/Gear.SLDPRT` without a sidecar and confirm the app reports a sidecar-required conversion failure instead of rendering `Gear.JPG`.
+- Add a same-name `Gear.step`, `Gear.stp`, `Gear.3mf`, `Gear.glb`, `Gear.gltf`, `Gear.obj`, or `Gear.stl` beside the `.SLDPRT` and confirm the app reports `solidworks-sidecar`.
