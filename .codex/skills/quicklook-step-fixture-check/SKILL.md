@@ -175,3 +175,18 @@ For click bugs, use `quicklook-edge-selection-debug`. The main learned failure m
 ### Validation
 - Launch `/Users/williamxu/Downloads/spur-gear-415.snapshot.1/Gear.SLDPRT` without a sidecar and confirm the app reports a sidecar-required conversion failure instead of rendering `Gear.JPG`.
 - Add a same-name `Gear.step`, `Gear.stp`, `Gear.3mf`, `Gear.glb`, `Gear.gltf`, `Gear.obj`, or `Gear.stl` beside the `.SLDPRT` and confirm the app reports `solidworks-sidecar`.
+
+## 2026-07-04 Update
+
+### Problem context
+- A fake local `.SLDPRT` converter proved the converter plumbing but rendered the cube-hole fixture as `Gear.obj`, creating a misleading success state for `Gear.SLDPRT`.
+
+### What changed
+- Documented the guardrail: do not add or configure fake converter outputs for SolidWorks fixtures. For `.SLDPRT/.SLDASM`, either require a real same-name 3D sidecar (`step/stp/3mf/glb/gltf/obj/stl`) or fail honestly.
+
+### Why it helped
+- Prevents wasting implementation time on infrastructure that cannot produce real gear geometry and avoids presenting non-gear meshes as successful SolidWorks import.
+
+### Validation
+- Open `/Users/williamxu/Downloads/spur-gear-415.snapshot.1/Gear.SLDPRT` without a real sidecar and confirm no cached fake `Gear.obj` appears under `~/Library/Caches/QuickLookStep/SolidWorksConversions`.
+- Confirm logs show Model I/O / SceneKit native import failure instead of `solidworks-local-converter`.
