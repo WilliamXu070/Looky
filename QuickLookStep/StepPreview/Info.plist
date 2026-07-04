@@ -26,11 +26,15 @@
 				<string>model/obj</string>
 				<string>model/stl</string>
 				<string>model/3mf</string>
+				<string>com.solidworks.part</string>
+				<string>com.solidworks.assembly</string>
 				<string>gltf</string>
 				<string>glb</string>
 				<string>obj</string>
 				<string>stl</string>
 				<string>3mf</string>
+				<string>sldprt</string>
+				<string>sldasm</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>

@@ -26,6 +26,8 @@ let types: [String] = [
     "public.standard-tesselated-geometry-format",
     "org.khronos.gltf",
     "org.khronos.glb",
+    "com.solidworks.part",
+    "com.solidworks.assembly",
     "com.johnboiles.model3d",
 ]
 
@@ -41,4 +43,4 @@ SWIFT
 qlmanage -r
 qlmanage -r cache
 
-echo "Registered QuickLookStep file handlers for OBJ/STL/glTF/3MF."
+echo "Registered QuickLookStep file handlers for OBJ/STL/glTF/3MF/SolidWorks."

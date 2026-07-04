@@ -8,7 +8,7 @@ description: Use this skill for QuickLook/QuickLookStep plugin refresh issues, c
 Use when `QuickLookStep` previews or thumbnails do not appear, or Finder extension registration seems stale.
 
 ## Goal
-Ensure `.step/.stp/.obj/.stl/.gltf/.glb/.3mf` are claimed by the rebuilt QuickLookStep extensions and Finder/Quick Look reflects the latest binary.
+Ensure `.step/.stp/.obj/.stl/.gltf/.glb/.3mf/.sldprt/.sldasm` are claimed by the rebuilt QuickLookStep extensions and Finder/Quick Look reflects the latest binary.
 
 ## 0) Identify which app you're resetting
 Most recent bundle path in this workspace:
@@ -97,4 +97,25 @@ If launch via `open` fails in CI/headless contexts, run direct binary as a fallb
 ```text
 content change: expanded STEP/STP coverage in register-file-types.sh.
 example usage: run immediately after each rebuild to avoid stale handler claims for STEP/STP previews.
+```
+
+## 2026-07-04 Update
+
+### Problem context
+- Adding SolidWorks `.SLDPRT/.SLDASM` accommodation requires Finder/QuickLook to route those proprietary file extensions to QuickLookStep; otherwise the app can load the file directly but space-bar preview may stay with another handler or no handler.
+
+### What changed
+- Added SolidWorks content types to the supported registration guidance and `testing/scripts/register-file-types.sh`: `com.solidworks.part` and `com.solidworks.assembly`.
+
+### Why it helped
+- Keeps installed app refreshes aligned with the new `Info.plist` declarations so `.sldprt/.sldasm` files reach the QuickLookStep preview/thumbnail extensions.
+
+### Validation
+- `testing/scripts/register-file-types.sh /Applications/QuickLookStep.app`
+- `qlmanage -r && qlmanage -r cache`
+- `open -a /Applications/QuickLookStep.app --args --sample "/Users/williamxu/Downloads/spur-gear-415.snapshot.1/Gear.SLDPRT"`
+
+```text
+content change: registered SolidWorks part/assembly content types for QuickLookStep refresh workflows.
+example usage: after installing a build with SLDPRT support, run the helper so Finder routes Gear.SLDPRT into QuickLookStep instead of showing stale no-preview behavior.
 ```

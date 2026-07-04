@@ -144,3 +144,19 @@ For click bugs, use `quicklook-edge-selection-debug`. The main learned failure m
 - Run `xcrun scntool --help`; if supported formats list only `dae`, `c3d`, `usda`, `usdc`, and `usdz`, do not plan around `scntool` as a GLB/glTF converter.
 - Inspect the asset with `strings "<model.glb>" | rg "images|bufferView|uri|png|jpg"`; `bufferView` means embedded images, while `uri` means external texture lookup is required.
 - Check texture sizes with `sips -g pixelWidth -g pixelHeight <texture-folder>/*`.
+
+## 2026-07-04 Update
+
+### Problem context
+- SolidWorks `.SLDPRT/.SLDASM` files are proprietary CAD containers; the local macOS stack does not expose native B-rep geometry for `Gear.SLDPRT`, and probes showed `MDLAsset.canImportFileExtension("sldprt") == false` plus SceneKit `NSCocoaErrorDomain Code=259`.
+
+### What changed
+- Documented the QuickLookStep SolidWorks accommodation path: `SceneBuilder` registers `sldprt/sldasm`, tries Model I/O and SceneKit, then searches for same-name sidecar exports (`step/stp/3mf/glb/gltf/obj/stl`) before falling back to a same-name preview image such as `Gear.JPG`.
+
+### Why it helped
+- Lets downloaded SolidWorks snapshots open in the viewer when they include an exported mesh/CAD sidecar or preview image, while making clear that preview-image loads are not selectable/measurable parsed CAD geometry.
+
+### Validation
+- `swift` probe: verify Model I/O reports `false` and SceneKit fails for `/Users/williamxu/Downloads/spur-gear-415.snapshot.1/Gear.SLDPRT`.
+- `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app "/Users/williamxu/Downloads/spur-gear-415.snapshot.1/Gear.SLDPRT" /tmp/quicklook-ui-launch-check-gear-sldprt.png`
+- Check app logs for `loadMethod = "solidworks-preview-image"` or `loadMethod = "solidworks-sidecar-..."`.

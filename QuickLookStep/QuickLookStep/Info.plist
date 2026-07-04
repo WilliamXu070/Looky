@@ -18,6 +18,8 @@
 				<string>public.standard-tesselated-geometry-format</string>
 				<string>org.khronos.gltf</string>
 				<string>org.khronos.glb</string>
+				<string>com.solidworks.part</string>
+				<string>com.solidworks.assembly</string>
 			</array>
 			<key>LSTypeIsPackage</key>
 			<false/>
@@ -48,7 +50,7 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>3D Model (STEP/OBJ/STL/glTF/3MF)</string>
+			<string>3D Model (STEP/OBJ/STL/glTF/3MF/SolidWorks)</string>
 			<key>UTTypeIcons</key>
 			<dict/>
 			<key>UTTypeIdentifier</key>
@@ -62,11 +64,15 @@
 					<string>gltf</string>
 					<string>glb</string>
 					<string>3mf</string>
+					<string>sldprt</string>
+					<string>sldasm</string>
 					<string>STEP</string>
 					<string>STP</string>
 					<string>GLTF</string>
 					<string>GLB</string>
 					<string>3MF</string>
+					<string>SLDPRT</string>
+					<string>SLDASM</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>
@@ -86,7 +92,7 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>3D Model (STEP/OBJ/STL/glTF/3MF)</string>
+			<string>3D Model (STEP/OBJ/STL/glTF/3MF/SolidWorks)</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.johnboiles.model3d</string>
 			<key>UTTypeTagSpecification</key>
@@ -98,11 +104,15 @@
 					<string>gltf</string>
 					<string>glb</string>
 					<string>3mf</string>
+					<string>sldprt</string>
+					<string>sldasm</string>
 					<string>STEP</string>
 					<string>STP</string>
 					<string>GLTF</string>
 					<string>GLB</string>
 					<string>3MF</string>
+					<string>SLDPRT</string>
+					<string>SLDASM</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>
@@ -148,6 +158,44 @@
 				<array>
 					<string>stl</string>
 					<string>STL</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.3d-content</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>SolidWorks Part</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.solidworks.part</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>sldprt</string>
+					<string>SLDPRT</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.3d-content</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>SolidWorks Assembly</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.solidworks.assembly</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>sldasm</string>
+					<string>SLDASM</string>
 				</array>
 			</dict>
 		</dict>
