@@ -368,3 +368,26 @@ testing/scripts/verify_quicklook_ui_launch.sh
 content change: default launch behavior changed to edge-only mode.
 example usage: run without `--edge-only=0` while triaging edge clicks; pass `--edge-only=0` only when you want surface selection back.
 ```
+
+## 2026-07-04 Update
+
+### Problem context
+- Multi-edge measurement needed CAD-style diagnostic detail instead of only total length and a coarse minimum distance.
+
+### What changed
+- Added user-facing multi-edge distance detail to the measurement model and panel: selected edge list, minimum/maximum edge-pair distance, XYZ component deltas, closest-point coordinates, and an expandable `Distance Details` section.
+- Added `minMinimumDistance` / `maxMinimumDistance` measurement expectations and a focused golden plan at `testing/plans/measurement-multi-edge-details-cube-hole.json`.
+
+### Why it helped
+- Makes Shift/Cmd multi-edge selection inspectable and regression-testable without relying only on screenshots.
+- Captures the same kind of per-axis measurement evidence expected from CAD measure panels.
+
+### Validation
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- `swift testing/selection-engine/scripts/check_selection_measurements.swift`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/measurement-multi-edge-details-cube-hole.json testing/results/measurement-multi-edge-details-cube-hole.json`
+
+```text
+content change: multi-edge measurement now records expandable XYZ distance diagnostics.
+example usage: Shift-select two edges in the viewer, open Distance Details, and inspect min/max distance, per-axis deltas, and closest points.
+```

@@ -702,6 +702,14 @@ struct QuickLookStepHostView: View {
            (totalLength ?? Float.greatestFiniteMagnitude) > maxTotalLength {
             failures.append("measurement totalLength expected <= \(maxTotalLength), got \(formatFailureFloat(totalLength))")
         }
+        if let minMinimumDistance = expectation.minMinimumDistance,
+           (summary.minimumDistance ?? -Float.greatestFiniteMagnitude) < minMinimumDistance {
+            failures.append("measurement minimumDistance expected >= \(minMinimumDistance), got \(formatFailureFloat(summary.minimumDistance))")
+        }
+        if let maxMinimumDistance = expectation.maxMinimumDistance,
+           (summary.minimumDistance ?? Float.greatestFiniteMagnitude) > maxMinimumDistance {
+            failures.append("measurement minimumDistance expected <= \(maxMinimumDistance), got \(formatFailureFloat(summary.minimumDistance))")
+        }
         if let minArea = expectation.minArea,
            (summary.area ?? -Float.greatestFiniteMagnitude) < minArea {
             failures.append("measurement area expected >= \(minArea), got \(formatFailureFloat(summary.area))")

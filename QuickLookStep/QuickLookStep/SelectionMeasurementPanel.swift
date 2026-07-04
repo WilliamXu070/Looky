@@ -6,6 +6,8 @@ struct SelectionMeasurementPanel: View {
     @Binding var mmPerModelUnit: Double
     var onClose: () -> Void
 
+    @State private var showDistanceDetails = false
+
     private let panelWidth: CGFloat = 340
 
     var body: some View {
@@ -15,8 +17,12 @@ struct SelectionMeasurementPanel: View {
             Divider()
                 .opacity(0.55)
 
+            if !state.entities.isEmpty {
+                selectedEntities
+            }
+
             ScrollView {
-                VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
                     ForEach(rows.indices, id: \.self) { index in
                         measurementRow(rows[index])
                         if index < rows.count - 1 {
@@ -24,9 +30,15 @@ struct SelectionMeasurementPanel: View {
                                 .opacity(0.45)
                         }
                     }
+
+                    if let detail = state.summary.distanceDetail {
+                        Divider()
+                            .opacity(0.45)
+                        distanceDetails(detail)
+                    }
                 }
             }
-            .frame(maxHeight: 250)
+            .frame(maxHeight: 320)
 
             Divider()
                 .opacity(0.55)
@@ -43,6 +55,42 @@ struct SelectionMeasurementPanel: View {
         }
         .shadow(color: Color.black.opacity(0.14), radius: 22, x: 0, y: 12)
         .foregroundStyle(Color.primary)
+    }
+
+    private var selectedEntities: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Selected")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 4) {
+                ForEach(Array(state.entities.enumerated()), id: \.element.id) { index, entity in
+                    HStack(spacing: 8) {
+                        Image(systemName: entity.kind == "surface" ? "square.grid.3x3.fill" : "line.diagonal")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(entity.kind == "surface" ? .orange : .blue)
+                            .frame(width: 14)
+
+                        Text(entity.label.isEmpty ? "Entity \(index + 1)" : entity.label)
+                            .font(.system(size: 12, weight: .medium))
+                            .lineLimit(1)
+
+                        Spacer(minLength: 8)
+
+                        if let length = entity.length {
+                            Text(formatLength(length))
+                                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.primary.opacity(0.055))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+            }
+        }
     }
 
     private var header: some View {
@@ -132,6 +180,66 @@ struct SelectionMeasurementPanel: View {
         .padding(.vertical, 8)
     }
 
+    private func distanceDetails(_ detail: SelectionMeasurementDistanceDetail) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    showDistanceDetails.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: showDistanceDetails ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .frame(width: 12)
+                    Text("Distance Details")
+                        .font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Text(formatLength(detail.minimumDistance))
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 8)
+
+            if showDistanceDetails {
+                VStack(spacing: 0) {
+                    measurementRow(.init("Between", "\(detail.firstLabel) - \(detail.secondLabel)"))
+                    measurementRow(.init("Min Distance", formatLength(detail.minimumDistance)))
+                    axisRows(prefix: "Min", delta: detail.minimumDeltaSIMD)
+                    pointRows(prefix: "A", point: detail.minimumFirstPointSIMD)
+                    pointRows(prefix: "B", point: detail.minimumSecondPointSIMD)
+
+                    Divider()
+                        .opacity(0.35)
+                        .padding(.vertical, 2)
+
+                    measurementRow(.init("Max Distance", formatLength(detail.maximumDistance)))
+                    axisRows(prefix: "Max", delta: detail.maximumDeltaSIMD)
+                }
+                .padding(.leading, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func axisRows(prefix: String, delta: SIMD3<Float>?) -> some View {
+        if let delta {
+            measurementRow(.init("\(prefix) X", formatSignedLength(delta.x)))
+            measurementRow(.init("\(prefix) Y", formatSignedLength(delta.y)))
+            measurementRow(.init("\(prefix) Z", formatSignedLength(delta.z)))
+        }
+    }
+
+    @ViewBuilder
+    private func pointRows(prefix: String, point: SIMD3<Float>?) -> some View {
+        if let point {
+            measurementRow(.init("\(prefix) XYZ", formatPoint(point)))
+        }
+    }
+
     private var rows: [MeasurementRow] {
         let summary = state.summary
         switch summary.kind {
@@ -146,6 +254,7 @@ struct SelectionMeasurementPanel: View {
             return [
                 .init("Total Length", formatLength(summary.totalLength)),
                 .init("Minimum Distance", formatLength(summary.minimumDistance)),
+                .init("Maximum Distance", formatLength(summary.maximumDistance)),
                 .init("Center-to-Center", formatLength(summary.centerToCenterDistance)),
                 .init("Angle", formatAngle(summary.angleDegrees)),
                 .init("Points", formatCount(summary.pointCount)),
@@ -196,6 +305,15 @@ struct SelectionMeasurementPanel: View {
         return "\(formatNumber(converted)) \(unit.shortLabel)"
     }
 
+    private func formatSignedLength(_ value: Float?) -> String {
+        guard let value, value.isFinite else {
+            return "-"
+        }
+        let converted = unit.convertLength(value, mmPerModelUnit: sanitizedScale)
+        let sign = converted > 0 ? "+" : ""
+        return "\(sign)\(formatNumber(converted)) \(unit.shortLabel)"
+    }
+
     private func formatArea(_ value: Float?) -> String {
         guard let value, value.isFinite else {
             return "-"
@@ -216,6 +334,13 @@ struct SelectionMeasurementPanel: View {
             return "-"
         }
         return "\(value)"
+    }
+
+    private func formatPoint(_ point: SIMD3<Float>) -> String {
+        let x = unit.convertLength(point.x, mmPerModelUnit: sanitizedScale)
+        let y = unit.convertLength(point.y, mmPerModelUnit: sanitizedScale)
+        let z = unit.convertLength(point.z, mmPerModelUnit: sanitizedScale)
+        return "\(formatNumber(x)), \(formatNumber(y)), \(formatNumber(z))"
     }
 
     private func formatNumber(_ value: Double) -> String {

@@ -61,6 +61,8 @@ struct SelectionMeasurementExpectation: Codable {
     let unitMode: String?
     let minTotalLength: Float?
     let maxTotalLength: Float?
+    let minMinimumDistance: Float?
+    let maxMinimumDistance: Float?
     let minArea: Float?
     let maxArea: Float?
     let minPerimeter: Float?
@@ -104,13 +106,15 @@ struct SelectionMeasurementState: Codable, Equatable {
                 perimeter: entity.perimeter,
                 radius: nil,
                 minimumDistance: nil,
+                maximumDistance: nil,
                 centerToCenterDistance: nil,
                 angleDegrees: nil,
                 triangleCount: entity.triangleCount,
                 pointCount: nil,
                 shape: nil,
                 surfaceType: entity.surfaceType,
-                unitMode: nil
+                unitMode: nil,
+                distanceDetail: nil
             )
         )
     }
@@ -162,13 +166,15 @@ struct SelectionMeasurementSummary: Codable, Equatable {
         perimeter: nil,
         radius: nil,
         minimumDistance: nil,
+        maximumDistance: nil,
         centerToCenterDistance: nil,
         angleDegrees: nil,
         triangleCount: nil,
         pointCount: nil,
         shape: nil,
         surfaceType: nil,
-        unitMode: nil
+        unitMode: nil,
+        distanceDetail: nil
     )
 
     let kind: String
@@ -180,6 +186,7 @@ struct SelectionMeasurementSummary: Codable, Equatable {
     let perimeter: Float?
     let radius: Float?
     let minimumDistance: Float?
+    let maximumDistance: Float?
     let centerToCenterDistance: Float?
     let angleDegrees: Float?
     let triangleCount: Int?
@@ -187,6 +194,7 @@ struct SelectionMeasurementSummary: Codable, Equatable {
     let shape: String?
     let surfaceType: String?
     var unitMode: String?
+    let distanceDetail: SelectionMeasurementDistanceDetail?
 
     func withUnitMode(_ unitMode: MeasurementUnit) -> SelectionMeasurementSummary {
         var copy = self
@@ -198,6 +206,50 @@ struct SelectionMeasurementSummary: Codable, Equatable {
 struct SelectionSurfaceMeasurements {
     let area: Float
     let perimeter: Float
+}
+
+struct SelectionMeasurementDistanceDetail: Codable, Equatable {
+    let firstEntityID: String
+    let secondEntityID: String
+    let firstLabel: String
+    let secondLabel: String
+    let minimumDistance: Float
+    let minimumDelta: [Float]
+    let minimumFirstPoint: [Float]
+    let minimumSecondPoint: [Float]
+    let maximumDistance: Float
+    let maximumDelta: [Float]
+    let maximumFirstPoint: [Float]
+    let maximumSecondPoint: [Float]
+
+    var minimumDeltaSIMD: SIMD3<Float>? {
+        Self.simd3(minimumDelta)
+    }
+
+    var maximumDeltaSIMD: SIMD3<Float>? {
+        Self.simd3(maximumDelta)
+    }
+
+    var minimumFirstPointSIMD: SIMD3<Float>? {
+        Self.simd3(minimumFirstPoint)
+    }
+
+    var minimumSecondPointSIMD: SIMD3<Float>? {
+        Self.simd3(minimumSecondPoint)
+    }
+
+    var maximumFirstPointSIMD: SIMD3<Float>? {
+        Self.simd3(maximumFirstPoint)
+    }
+
+    var maximumSecondPointSIMD: SIMD3<Float>? {
+        Self.simd3(maximumSecondPoint)
+    }
+
+    private static func simd3(_ values: [Float]) -> SIMD3<Float>? {
+        guard values.count >= 3 else { return nil }
+        return SIMD3<Float>(values[0], values[1], values[2])
+    }
 }
 
 enum SelectionMeasurementCalculator {
@@ -222,7 +274,9 @@ enum SelectionMeasurementCalculator {
             partial + (entity.length ?? polylineLength(entity.simdPoints))
         }
         let pointCount = edgeEntities.reduce(0) { $0 + ($1.pointCount ?? $1.points.count) }
-        let minimumDistance = edgeEntities.count >= 2 ? minimumDistance(between: edgeEntities.map(\.simdPoints)) : nil
+        let distanceDetail = edgeEntities.count >= 2 ? closestDistanceDetail(edgeEntities) : nil
+        let minimumDistance = distanceDetail?.minimumDistance
+        let maximumDistance = distanceDetail?.maximumDistance
         let centerDistance = edgeEntities.count >= 2 ? minimumCentroidDistance(edgeEntities.map(\.simdPoints)) : nil
         let angle = edgeEntities.count == 2 ? angleDegrees(edgeEntities[0].simdPoints, edgeEntities[1].simdPoints) : nil
 
@@ -237,13 +291,15 @@ enum SelectionMeasurementCalculator {
                 perimeter: nil,
                 radius: entity.radius,
                 minimumDistance: nil,
+                maximumDistance: nil,
                 centerToCenterDistance: nil,
                 angleDegrees: nil,
                 triangleCount: nil,
                 pointCount: entity.pointCount,
                 shape: entity.shape,
                 surfaceType: nil,
-                unitMode: nil
+                unitMode: nil,
+                distanceDetail: nil
             )
         }
 
@@ -257,13 +313,15 @@ enum SelectionMeasurementCalculator {
             perimeter: nil,
             radius: nil,
             minimumDistance: minimumDistance,
+            maximumDistance: maximumDistance,
             centerToCenterDistance: centerDistance,
             angleDegrees: angle,
             triangleCount: nil,
             pointCount: pointCount,
             shape: nil,
             surfaceType: nil,
-            unitMode: nil
+            unitMode: nil,
+            distanceDetail: distanceDetail
         )
     }
 
@@ -319,8 +377,11 @@ enum SelectionMeasurementCalculator {
     }
 
     static func minimumDistance(between polylines: [[SIMD3<Float>]]) -> Float? {
-        var best = Float.greatestFiniteMagnitude
+        minimumDistanceReport(between: polylines)?.distance
+    }
 
+    static func minimumDistanceReport(between polylines: [[SIMD3<Float>]]) -> (distance: Float, firstPoint: SIMD3<Float>, secondPoint: SIMD3<Float>)? {
+        var best: (distance: Float, firstPoint: SIMD3<Float>, secondPoint: SIMD3<Float>)?
         for firstIndex in polylines.indices {
             let firstSegments = segments(in: polylines[firstIndex])
             guard !firstSegments.isEmpty else { continue }
@@ -329,13 +390,95 @@ enum SelectionMeasurementCalculator {
                 guard !secondSegments.isEmpty else { continue }
                 for first in firstSegments {
                     for second in secondSegments {
-                        best = min(best, segmentSegmentDistance(first.0, first.1, second.0, second.1))
+                        let candidate = segmentSegmentDistanceReport(first.0, first.1, second.0, second.1)
+                        if best == nil || candidate.distance < best!.distance {
+                            best = candidate
+                        }
                     }
                 }
             }
         }
 
-        return best.isFinite ? best : nil
+        return best
+    }
+
+    static func closestDistanceDetail(_ entities: [SelectionMeasurementEntity]) -> SelectionMeasurementDistanceDetail? {
+        let edgeEntities = uniqueEdges(entities)
+        var best: (
+            distance: Float,
+            first: SelectionMeasurementEntity,
+            second: SelectionMeasurementEntity,
+            firstPoint: SIMD3<Float>,
+            secondPoint: SIMD3<Float>
+        )?
+        var farthest: (
+            distance: Float,
+            first: SelectionMeasurementEntity,
+            second: SelectionMeasurementEntity,
+            firstPoint: SIMD3<Float>,
+            secondPoint: SIMD3<Float>
+        )?
+
+        for firstIndex in edgeEntities.indices {
+            let first = edgeEntities[firstIndex]
+            let firstSegments = segments(in: first.simdPoints)
+            guard !firstSegments.isEmpty else { continue }
+
+            for secondIndex in edgeEntities.indices where secondIndex > firstIndex {
+                let second = edgeEntities[secondIndex]
+                let secondSegments = segments(in: second.simdPoints)
+                guard !secondSegments.isEmpty else { continue }
+
+                for firstSegment in firstSegments {
+                    for secondSegment in secondSegments {
+                        let nearest = segmentSegmentDistanceReport(
+                            firstSegment.0,
+                            firstSegment.1,
+                            secondSegment.0,
+                            secondSegment.1
+                        )
+                        if best == nil || nearest.distance < best!.distance {
+                            best = (nearest.distance, first, second, nearest.firstPoint, nearest.secondPoint)
+                        }
+
+                        let endpoints = [
+                            (firstSegment.0, secondSegment.0),
+                            (firstSegment.0, secondSegment.1),
+                            (firstSegment.1, secondSegment.0),
+                            (firstSegment.1, secondSegment.1),
+                        ]
+                        for endpointPair in endpoints {
+                            let distance = simd_distance(endpointPair.0, endpointPair.1)
+                            if farthest == nil || distance > farthest!.distance {
+                                farthest = (distance, first, second, endpointPair.0, endpointPair.1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        guard let best else {
+            return nil
+        }
+        let farthestPair = farthest ?? best
+        let minimumDelta = best.secondPoint - best.firstPoint
+        let maximumDelta = farthestPair.secondPoint - farthestPair.firstPoint
+
+        return SelectionMeasurementDistanceDetail(
+            firstEntityID: best.first.id,
+            secondEntityID: best.second.id,
+            firstLabel: best.first.label,
+            secondLabel: best.second.label,
+            minimumDistance: best.distance,
+            minimumDelta: array(minimumDelta),
+            minimumFirstPoint: array(best.firstPoint),
+            minimumSecondPoint: array(best.secondPoint),
+            maximumDistance: farthestPair.distance,
+            maximumDelta: array(maximumDelta),
+            maximumFirstPoint: array(farthestPair.firstPoint),
+            maximumSecondPoint: array(farthestPair.secondPoint)
+        )
     }
 
     static func minimumCentroidDistance(_ polylines: [[SIMD3<Float>]]) -> Float? {
@@ -382,6 +525,10 @@ enum SelectionMeasurementCalculator {
         }
     }
 
+    private static func array(_ point: SIMD3<Float>) -> [Float] {
+        [point.x, point.y, point.z]
+    }
+
     private static func centroid(_ points: [SIMD3<Float>]) -> SIMD3<Float>? {
         guard !points.isEmpty else {
             return nil
@@ -410,6 +557,15 @@ enum SelectionMeasurementCalculator {
         _ p2: SIMD3<Float>,
         _ q2: SIMD3<Float>
     ) -> Float {
+        segmentSegmentDistanceReport(p1, q1, p2, q2).distance
+    }
+
+    private static func segmentSegmentDistanceReport(
+        _ p1: SIMD3<Float>,
+        _ q1: SIMD3<Float>,
+        _ p2: SIMD3<Float>,
+        _ q2: SIMD3<Float>
+    ) -> (distance: Float, firstPoint: SIMD3<Float>, secondPoint: SIMD3<Float>) {
         let d1 = q1 - p1
         let d2 = q2 - p2
         let r = p1 - p2
@@ -419,15 +575,17 @@ enum SelectionMeasurementCalculator {
         let epsilon: Float = 0.000001
 
         if a <= epsilon, e <= epsilon {
-            return simd_distance(p1, p2)
+            return (simd_distance(p1, p2), p1, p2)
         }
         if a <= epsilon {
             let t = min(max(f / e, 0), 1)
-            return simd_distance(p1, p2 + d2 * t)
+            let closestSecond = p2 + d2 * t
+            return (simd_distance(p1, closestSecond), p1, closestSecond)
         }
         if e <= epsilon {
             let s = min(max(-simd_dot(d1, r) / a, 0), 1)
-            return simd_distance(p1 + d1 * s, p2)
+            let closestFirst = p1 + d1 * s
+            return (simd_distance(closestFirst, p2), closestFirst, p2)
         }
 
         let b = simd_dot(d1, d2)
@@ -452,6 +610,6 @@ enum SelectionMeasurementCalculator {
 
         let closestFirst = p1 + d1 * s
         let closestSecond = p2 + d2 * t
-        return simd_distance(closestFirst, closestSecond)
+        return (simd_distance(closestFirst, closestSecond), closestFirst, closestSecond)
     }
 }
