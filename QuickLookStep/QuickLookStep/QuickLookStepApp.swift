@@ -55,7 +55,7 @@ private func parseLaunchSettings(from arguments: [String]) -> LaunchSettings {
     var selectionDebugOutputPath: String?
     var selectionDebugHUDEnabled = false
     var edgeSelectionMode: EdgeSelectionMode = .fitted
-    var edgeOnlyMode = false
+    var edgeOnlyMode = true
 
     while idx < arguments.count {
         let arg = arguments[idx]

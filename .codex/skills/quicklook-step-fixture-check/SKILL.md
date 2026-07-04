@@ -115,3 +115,32 @@ For click bugs, use `quicklook-edge-selection-debug`. The main learned failure m
 - `testing/scripts/run-testing.sh "testing/plans/orientation-zoom.json" "testing/results/orientation-zoom-local.json"`
 - `testing/scripts/run-testing.sh "testing/plans/multi-format-orientation-speed.json" "testing/results/multi-format-local.json"`
 - `testing/surface-selection/scripts/run_visible_surface_overlay_test.sh`
+
+## 2026-07-03 Update
+
+### Problem context
+- GLB/glTF files can appear to load but render poorly when `SCNScene(url:)` fails and `SceneBuilder` falls back to the raw mesh-conversion path, because that path strips UV textures, normal maps, PBR material metadata, skins, and animation state.
+- On the current macOS/Xcode runtime, `SCNScene(url:)` rejects both repo `.glb` and `.gltf` fixtures with `NSCocoaErrorDomain Code=259`, while `.obj` loads; the `AssetImportKit` branch is compile-guarded but not wired as a project dependency.
+- A native probe on macOS 26.5.1 showed `MDLAsset.canImportFileExtension("glb") == false` and `MDLAsset.canImportFileExtension("gltf") == false`; `xcrun scntool --help` also omits GLB/glTF from supported formats. UTType recognition (`org.khronos.glb` / `org.khronos.gltf`) only proves file-type registration, not SceneKit or Model I/O importer support.
+
+### What changed
+- Added a triage note: for poor GLB/glTF rendering, first determine whether the app used `scenekit`, `asset-importkit`, or `mesh-conversion`, then inspect the asset layout for external texture folders such as a sibling `textures/` directory beside a `source/` model folder.
+- Added loader metadata keys to watch for: `loadMethod`, `materialQuality`, `degradationReason`, `fallbackReason`, `texturedMaterialCount`, `normalMapMaterialCount`, `pbrMaterialCount`, `textureSlotCount`, and `textureResolutionHint`.
+- Added the current root-cause rule: do not assume glTF/GLB registration means material-preserving import; verify `SCNScene(url:)` or an active importer actually accepts the file before debugging texture paths.
+- Updated the fallback expectation: the Python/trimesh path should load GLB as a scene when possible, export separate mesh parts, preserve UVs, extract embedded diffuse and normal textures to temporary PNGs, and report `materialQuality=fallback-textured` rather than `degraded`.
+- Added the importer-capability rule: before diagnosing a specific GLB asset as malformed, run a standalone Swift probe for `MDLAsset.canImportFileExtension`, `SCNSceneSource`, `SCNScene(url:)`, and a known-good OBJ control. If simple repo GLB/glTF fixtures fail too, treat native Apple GLB/glTF import as unavailable in that runtime.
+
+### Why it helped
+- Separates missing-resource/path issues from importer-fallback quality loss and prevents treating a visible mesh as a correct material import.
+- Provides a practical material-preserving fallback when SceneKit and Model I/O reject glTF/GLB, while still making clear that skins, animation, and some PBR metadata are stripped.
+- Avoids chasing Godzilla-specific material, texture, or skinning features when a minimal GLB with only triangle positions fails the same native import path.
+
+### Validation
+- Check app load metadata or logs for `SceneBuilder scene(for:)`, `Direct SceneKit load failed`, and `Loaded ... via mesh-conversion fallback`.
+- Check `SceneBuilder import diagnostics` logs; `materialQuality=degraded` with `degradationReason=mesh-conversion-strips-uv-textures-normal-maps-pbr-skins-animation` confirms importer fallback quality loss rather than only a missing texture path.
+- After the textured fallback fix, the Godzilla GLB should report `materialQuality=fallback-textured`, `texturedMaterialCount=8`, `normalMapMaterialCount=8`, `pbrMaterialCount=8`, and `textureSlotCount=16`.
+- Compare import support quickly with a Swift probe against `testing/input/cube_hole_from_step.glb`, `testing/input/cube_hole_from_step.gltf`, and `testing/input/cube_hole_from_step.obj`; if only OBJ loads, fix the importer path before texture search.
+- In the Swift probe, expect current-runtime native support evidence to look like: `mdlCan=false` for `glb`/`gltf`, `SCNScene(url)` fails with `NSCocoaErrorDomain Code=259`, `MDLAsset count 0`, and OBJ succeeds.
+- Run `xcrun scntool --help`; if supported formats list only `dae`, `c3d`, `usda`, `usdc`, and `usdz`, do not plan around `scntool` as a GLB/glTF converter.
+- Inspect the asset with `strings "<model.glb>" | rg "images|bufferView|uri|png|jpg"`; `bufferView` means embedded images, while `uri` means external texture lookup is required.
+- Check texture sizes with `sips -g pixelWidth -g pixelHeight <texture-folder>/*`.

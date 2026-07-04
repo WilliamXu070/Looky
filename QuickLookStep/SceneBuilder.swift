@@ -1,6 +1,8 @@
 import SceneKit
+import SceneKit.ModelIO
 import Cocoa
 import Quartz
+import ModelIO
 #if canImport(AssetImportKit)
 import AssetImportKit
 #endif
@@ -61,11 +63,50 @@ enum SceneBuilder {
     }
 
     private struct MeshDump: Decodable {
+        let meshes: [MeshPartDump]?
         let vertices: [[Double]]
         let normals: [[Double]]?
         let faces: [[Int]]
         let vertexColors: [[Int]]?
         let faceColors: [[Int]]
+    }
+
+    private struct MeshPartDump: Decodable {
+        let name: String?
+        let vertices: [[Double]]
+        let normals: [[Double]]?
+        let faces: [[Int]]
+        let uvs: [[Double]]?
+        let vertexColors: [[Int]]?
+        let faceColors: [[Int]]
+        let materialName: String?
+        let diffuseTexturePath: String?
+        let normalTexturePath: String?
+        let mainColor: [Int]?
+    }
+
+    private struct SceneMaterialDiagnostics {
+        var geometryCount = 0
+        var materialCount = 0
+        var texturedMaterialCount = 0
+        var diffuseTextureMaterialCount = 0
+        var normalMapMaterialCount = 0
+        var pbrMaterialCount = 0
+        var textureSlotCount = 0
+        var triangleCount = 0
+
+        var metadata: [String: String] {
+            [
+                "geometryCount": "\(geometryCount)",
+                "materialCount": "\(materialCount)",
+                "texturedMaterialCount": "\(texturedMaterialCount)",
+                "diffuseTextureMaterialCount": "\(diffuseTextureMaterialCount)",
+                "normalMapMaterialCount": "\(normalMapMaterialCount)",
+                "pbrMaterialCount": "\(pbrMaterialCount)",
+                "textureSlotCount": "\(textureSlotCount)",
+                "triangleCount": "\(triangleCount)",
+            ]
+        }
     }
 
     static func canLoad(fileURL: URL) -> Bool {
@@ -85,7 +126,9 @@ enum SceneBuilder {
             return SceneLoadResult(scene: try sceneFromSTEPFile(url), method: "step-native")
         case .threeMF:
             return try sceneFromThreeMFFileOrConvertWithTrace(url)
-        case .gltf, .glb, .obj, .stl:
+        case .gltf, .glb:
+            return try sceneFromGLTFFileOrConvertWithTrace(url, primaryFormat: format)
+        case .obj, .stl:
             return try sceneFromSceneKitFileOrConvertWithTrace(url, primaryFormat: format)
         case .unsupported:
             throw SceneBuilderError.unsupportedFile(url.pathExtension)
@@ -114,14 +157,150 @@ enum SceneBuilder {
         return try buildStandardizedScene(from: modelRoot, fileName: sourceName ?? url.lastPathComponent)
     }
 
+    private static func sceneFromModelIOFile(_ url: URL, sourceName: String? = nil) throws -> SCNScene {
+        let asset = MDLAsset(url: url)
+        guard asset.count > 0 else {
+            throw SceneBuilderError.emptyModel(url)
+        }
+
+        let imported = SCNScene(mdlAsset: asset)
+        let sourceChildren = imported.rootNode.childNodes
+        guard !sourceChildren.isEmpty else {
+            throw SceneBuilderError.emptyModel(url)
+        }
+
+        let modelRoot = SCNNode()
+        modelRoot.name = "model-root"
+        for child in sourceChildren {
+            child.removeFromParentNode()
+            modelRoot.addChildNode(child)
+        }
+
+        applyMeshLightingFixups(to: modelRoot)
+        return try buildStandardizedScene(from: modelRoot, fileName: sourceName ?? url.lastPathComponent)
+    }
+
+    private static func sceneFromGLTFFileOrConvertWithTrace(_ url: URL, primaryFormat: LoadFormat) throws -> SceneLoadResult {
+        var fallbackReasons: [String] = []
+
+        do {
+            let scene = try sceneFromModelIOFile(url)
+            return SceneLoadResult(
+                scene: scene,
+                method: "modelio",
+                metadata: importDiagnosticsMetadata(
+                    for: scene,
+                    url: url,
+                    method: "modelio",
+                    format: primaryFormat,
+                    materialQuality: nil,
+                    degradationReason: nil,
+                    fallbackReason: nil
+                )
+            )
+        } catch {
+            fallbackReasons.append("modelio:\(shortErrorDescription(error))")
+            NSLog("Model I/O load failed for %@ with %@", url.path, error as NSError)
+        }
+
+        do {
+            let scene = try sceneFromSceneKitFile(url)
+            return SceneLoadResult(
+                scene: scene,
+                method: "scenekit",
+                metadata: importDiagnosticsMetadata(
+                    for: scene,
+                    url: url,
+                    method: "scenekit",
+                    format: primaryFormat,
+                    materialQuality: nil,
+                    degradationReason: nil,
+                    fallbackReason: fallbackReasons.joined(separator: " | ")
+                )
+            )
+        } catch {
+            fallbackReasons.append("scenekit:\(shortErrorDescription(error))")
+            NSLog("Direct SceneKit load failed for %@ with %@", url.path, error as NSError)
+        }
+
+        #if canImport(AssetImportKit)
+        do {
+            if let importedScene = try attemptAssetImportKitLoad(url) {
+                return SceneLoadResult(
+                    scene: importedScene,
+                    method: "asset-importkit",
+                    metadata: importDiagnosticsMetadata(
+                        for: importedScene,
+                        url: url,
+                        method: "asset-importkit",
+                        format: primaryFormat,
+                        materialQuality: nil,
+                        degradationReason: nil,
+                        fallbackReason: fallbackReasons.joined(separator: " | ")
+                    )
+                )
+            }
+        } catch {
+            fallbackReasons.append("asset-importkit:\(shortErrorDescription(error))")
+        }
+        #endif
+
+        do {
+            NSLog("Attempting material-preserving mesh-conversion fallback for %@", url.path)
+            let scene = try sceneFromConvertedMeshSource(url)
+            NSLog("Loaded %@ via material-preserving mesh-conversion fallback", url.path)
+            return SceneLoadResult(
+                scene: scene,
+                method: "mesh-conversion",
+                metadata: importDiagnosticsMetadata(
+                    for: scene,
+                    url: url,
+                    method: "mesh-conversion",
+                    format: primaryFormat,
+                    materialQuality: "fallback-textured",
+                    degradationReason: "mesh-conversion-preserves-uv-diffuse-normal-textures-but-strips-skins-animation-and-some-pbr-metadata",
+                    fallbackReason: fallbackReasons.joined(separator: " | ")
+                )
+            )
+        } catch {
+            NSLog("Mesh conversion failed for %@: %@", url.path, error.localizedDescription)
+            throw error
+        }
+    }
+
     private static func sceneFromSceneKitFileOrConvertWithTrace(_ url: URL, primaryFormat: LoadFormat) throws -> SceneLoadResult {
         do {
-            return SceneLoadResult(scene: try sceneFromSceneKitFile(url), method: "scenekit")
+            let scene = try sceneFromSceneKitFile(url)
+            return SceneLoadResult(
+                scene: scene,
+                method: "scenekit",
+                metadata: importDiagnosticsMetadata(
+                    for: scene,
+                    url: url,
+                    method: "scenekit",
+                    format: primaryFormat,
+                    materialQuality: nil,
+                    degradationReason: nil,
+                    fallbackReason: nil
+                )
+            )
         } catch {
             NSLog("Direct SceneKit load failed for %@ with %@", url.path, error as NSError)
             #if canImport(AssetImportKit)
             if let importedScene = try attemptAssetImportKitLoad(url) {
-                return SceneLoadResult(scene: importedScene, method: "asset-importkit")
+                return SceneLoadResult(
+                    scene: importedScene,
+                    method: "asset-importkit",
+                    metadata: importDiagnosticsMetadata(
+                        for: importedScene,
+                        url: url,
+                        method: "asset-importkit",
+                        format: primaryFormat,
+                        materialQuality: nil,
+                        degradationReason: nil,
+                        fallbackReason: "scenekit:\(shortErrorDescription(error))"
+                    )
+                )
             }
             #endif
             switch primaryFormat {
@@ -130,7 +309,19 @@ enum SceneBuilder {
                     NSLog("Attempting mesh-conversion fallback for %@", url.path)
                     let scene = try sceneFromConvertedMeshSource(url)
                     NSLog("Loaded %@ via mesh-conversion fallback", url.path)
-                    return SceneLoadResult(scene: scene, method: "mesh-conversion")
+                    return SceneLoadResult(
+                        scene: scene,
+                        method: "mesh-conversion",
+                        metadata: importDiagnosticsMetadata(
+                            for: scene,
+                            url: url,
+                            method: "mesh-conversion",
+                            format: primaryFormat,
+                            materialQuality: "degraded",
+                            degradationReason: "mesh-conversion-strips-uv-textures-normal-maps-pbr-skins-animation",
+                            fallbackReason: "scenekit:\(shortErrorDescription(error))"
+                        )
+                    )
                 } catch {
                     NSLog("Mesh conversion failed for %@: %@", url.path, error.localizedDescription)
                     throw error
@@ -202,6 +393,36 @@ enum SceneBuilder {
     }
 
     private static func sceneFromMeshDump(_ dump: MeshDump) throws -> SCNNode {
+        if let meshParts = dump.meshes, !meshParts.isEmpty {
+            let modelRoot = SCNNode()
+            modelRoot.name = "model-root"
+            for part in meshParts {
+                let node = try sceneNodeFromMeshPartDump(part)
+                modelRoot.addChildNode(node)
+            }
+            guard !modelRoot.childNodes.isEmpty else {
+                throw SceneBuilderError.emptyModel(URL(fileURLWithPath: ""))
+            }
+            return modelRoot
+        }
+
+        let legacyPart = MeshPartDump(
+            name: nil,
+            vertices: dump.vertices,
+            normals: dump.normals,
+            faces: dump.faces,
+            uvs: nil,
+            vertexColors: dump.vertexColors,
+            faceColors: dump.faceColors,
+            materialName: nil,
+            diffuseTexturePath: nil,
+            normalTexturePath: nil,
+            mainColor: nil
+        )
+        return try sceneNodeFromMeshPartDump(legacyPart)
+    }
+
+    private static func sceneNodeFromMeshPartDump(_ dump: MeshPartDump) throws -> SCNNode {
         guard !dump.vertices.isEmpty else {
             throw SceneBuilderError.emptyModel(URL(fileURLWithPath: ""))
         }
@@ -302,20 +523,88 @@ enum SceneBuilder {
             sources.append(colorSource)
         }
 
+        if let uvData = textureCoordinateSource(from: dump.uvs, expectedCount: vertices.count) {
+            sources.append(uvData)
+        }
+
         let geometry = SCNGeometry(sources: sources, elements: [geometryElement])
 
         let material = SCNMaterial()
-        material.lightingModel = .blinn
-        material.diffuse.contents = flatVertexColors != nil ? NSColor.white : normalizedDefaultColor(from: dump.vertexColors, faceColors: dump.faceColors)
+        material.name = dump.materialName
+        material.lightingModel = dump.diffuseTexturePath != nil ? .physicallyBased : .blinn
+        material.diffuse.contents = materialContents(
+            texturePath: dump.diffuseTexturePath,
+            fallbackColor: flatVertexColors != nil ? NSColor.white : normalizedDefaultColor(
+                from: dump.vertexColors,
+                faceColors: dump.faceColors,
+                mainColor: dump.mainColor
+            )
+        )
+        if let normalPath = dump.normalTexturePath {
+            material.normal.contents = URL(fileURLWithPath: normalPath)
+            material.normal.minificationFilter = .linear
+            material.normal.magnificationFilter = .linear
+            material.normal.mipFilter = .linear
+        }
+        material.diffuse.minificationFilter = .linear
+        material.diffuse.magnificationFilter = .linear
+        material.diffuse.mipFilter = .linear
         material.specular.contents = NSColor(white: 0.18, alpha: 1)
+        material.roughness.contents = 0.48
+        material.metalness.contents = 0
         material.shininess = 18
         material.isDoubleSided = true
         geometry.materials = [material]
 
-        return SCNNode(geometry: geometry)
+        let node = SCNNode(geometry: geometry)
+        node.name = dump.name
+        return node
     }
 
-    private static func normalizedDefaultColor(from vertexColors: [[Int]]?, faceColors: [[Int]]) -> NSColor {
+    private static func textureCoordinateSource(from uvs: [[Double]]?, expectedCount: Int) -> SCNGeometrySource? {
+        guard let uvs, uvs.count == expectedCount else {
+            return nil
+        }
+
+        var coordinates = [SIMD2<Float>]()
+        coordinates.reserveCapacity(expectedCount)
+        for uv in uvs {
+            guard uv.count >= 2 else {
+                return nil
+            }
+            coordinates.append(SIMD2<Float>(Float(uv[0]), Float(1.0 - uv[1])))
+        }
+
+        let data = coordinates.withUnsafeBytes { Data($0) }
+        return SCNGeometrySource(
+            data: data,
+            semantic: .texcoord,
+            vectorCount: coordinates.count,
+            usesFloatComponents: true,
+            componentsPerVector: 2,
+            bytesPerComponent: MemoryLayout<Float>.size,
+            dataOffset: 0,
+            dataStride: MemoryLayout<SIMD2<Float>>.size
+        )
+    }
+
+    private static func materialContents(texturePath: String?, fallbackColor: NSColor) -> Any {
+        guard let texturePath, FileManager.default.fileExists(atPath: texturePath) else {
+            return fallbackColor
+        }
+        return URL(fileURLWithPath: texturePath)
+    }
+
+    private static func normalizedDefaultColor(from vertexColors: [[Int]]?, faceColors: [[Int]], mainColor: [Int]? = nil) -> NSColor {
+        if let mainColor, mainColor.count >= 3 {
+            return NSColor(
+                red: CGFloat(Double(mainColor[0]) / 255.0),
+                green: CGFloat(Double(mainColor[1]) / 255.0),
+                blue: CGFloat(Double(mainColor[2]) / 255.0),
+                alpha: mainColor.count > 3 ? CGFloat(Double(mainColor[3]) / 255.0) : 1
+            )
+        }
+
         if let colors = vertexColors, let first = colors.first, first.count >= 3 {
             return NSColor(
                 red: CGFloat(Double(first[0]) / 255.0),
@@ -356,9 +645,124 @@ enum SceneBuilder {
         import numpy as np
         import trimesh
         import sys
+        import re
 
         source_path = pathlib.Path(sys.argv[1])
         output_path = pathlib.Path(sys.argv[2])
+        texture_dir = output_path.with_suffix('')
+        texture_dir.mkdir(parents=True, exist_ok=True)
+
+        def safe_name(value):
+            value = str(value or 'material')
+            value = re.sub(r'[^A-Za-z0-9_.-]+', '_', value).strip('_')
+            return value[:120] or 'material'
+
+        def color_array(value):
+            if value is None:
+                return None
+            try:
+                arr = np.asarray(value).reshape(-1)
+                if arr.size < 3:
+                    return None
+                if arr.max(initial=0) <= 1.0:
+                    arr = arr * 255.0
+                if arr.size < 4:
+                    arr = np.append(arr[:3], 255)
+                return np.clip(arr[:4], 0, 255).astype(int).tolist()
+            except Exception:
+                return None
+
+        def save_texture(image, stem, suffix):
+            if image is None:
+                return None
+            try:
+                texture_path = texture_dir / f'{safe_name(stem)}_{suffix}.png'
+                image.save(texture_path)
+                return str(texture_path)
+            except Exception:
+                return None
+
+        def mesh_payload(mesh, name=None, index=0):
+            visual = getattr(mesh, 'visual', None)
+            vertex_colors = None
+            face_colors = []
+            uvs = None
+            material_name = None
+            diffuse_texture = None
+            normal_texture = None
+            main_color = None
+
+            if visual is not None:
+                if getattr(visual, 'kind', None) == 'texture':
+                    if hasattr(visual, 'uv') and visual.uv is not None:
+                        uvs = np.asarray(visual.uv).tolist()
+                    material = getattr(visual, 'material', None)
+                    if material is not None:
+                        material_name = getattr(material, 'name', None)
+                        texture_stem = material_name or name or f'mesh_{index}'
+                        diffuse_texture = save_texture(
+                            getattr(material, 'baseColorTexture', None) or getattr(material, 'image', None),
+                            texture_stem,
+                            'diffuse'
+                        )
+                        normal_texture = save_texture(
+                            getattr(material, 'normalTexture', None),
+                            texture_stem,
+                            'normal'
+                        )
+                        main_color = color_array(getattr(material, 'main_color', None))
+                else:
+                    color_visual = visual
+                    if hasattr(color_visual, 'to_color'):
+                        try:
+                            color_visual = color_visual.to_color()
+                        except Exception:
+                            pass
+
+                    if hasattr(color_visual, 'vertex_colors'):
+                        vertex_colors = color_visual.vertex_colors
+                        if hasattr(vertex_colors, 'ndim') and vertex_colors.ndim == 1 and len(vertex_colors) == 4:
+                            vertex_colors = np.repeat(vertex_colors[np.newaxis, :], len(mesh.vertices), axis=0)
+
+                    if hasattr(color_visual, 'face_colors'):
+                        face_colors = color_visual.face_colors
+
+                    if face_colors is not None and len(np.shape(face_colors)) == 1 and len(face_colors) == 4:
+                        face_colors = np.repeat(face_colors[np.newaxis, :], len(mesh.faces), axis=0)
+
+            return {
+                'name': name,
+                'vertices': np.asarray(mesh.vertices).tolist(),
+                'normals': np.asarray(mesh.vertex_normals).tolist() if hasattr(mesh, 'vertex_normals') else None,
+                'faces': np.asarray(mesh.faces).astype(np.int32).tolist(),
+                'uvs': uvs,
+                'vertexColors': None if vertex_colors is None else np.asarray(vertex_colors).astype(int).tolist(),
+                'faceColors': [] if face_colors is None else np.asarray(face_colors).astype(int).tolist(),
+                'materialName': material_name,
+                'diffuseTexturePath': diffuse_texture,
+                'normalTexturePath': normal_texture,
+                'mainColor': main_color,
+            }
+
+        scene = trimesh.load(str(source_path), force='scene')
+        meshes = []
+        if isinstance(scene, trimesh.Scene):
+            for index, (name, mesh) in enumerate(scene.geometry.items()):
+                if mesh.is_empty:
+                    continue
+                meshes.append(mesh_payload(mesh, name=name, index=index))
+
+        if meshes:
+            payload = {
+                'meshes': meshes,
+                'vertices': [],
+                'normals': None,
+                'faces': [],
+                'vertexColors': None,
+                'faceColors': [],
+            }
+            output_path.write_text(json.dumps(payload), encoding='utf-8')
+            raise SystemExit(0)
 
         mesh = trimesh.load(str(source_path), force='mesh')
         if mesh.is_empty:
@@ -629,6 +1033,131 @@ enum SceneBuilder {
 
         NSLog("SceneBuilder loaded %@ successfully", fileName)
         return scene
+    }
+
+    private static func importDiagnosticsMetadata(
+        for scene: SCNScene,
+        url: URL,
+        method: String,
+        format: LoadFormat,
+        materialQuality explicitMaterialQuality: String?,
+        degradationReason: String?,
+        fallbackReason: String?
+    ) -> [String: String] {
+        let diagnostics = sceneMaterialDiagnostics(for: scene)
+        var metadata = diagnostics.metadata
+        metadata["sourceFormat"] = format.rawValue
+        metadata["loadMethod"] = method
+        metadata["materialQuality"] = explicitMaterialQuality ?? inferredMaterialQuality(
+            diagnostics: diagnostics,
+            format: format
+        )
+        metadata["textureResolutionHint"] = textureResolutionHint(for: url)
+
+        if let degradationReason, !degradationReason.isEmpty {
+            metadata["degradationReason"] = degradationReason
+        }
+        if let fallbackReason, !fallbackReason.isEmpty {
+            metadata["fallbackReason"] = fallbackReason
+        }
+
+        NSLog("SceneBuilder import diagnostics for %@: %@", url.lastPathComponent, metadata)
+        return metadata
+    }
+
+    private static func sceneMaterialDiagnostics(for scene: SCNScene) -> SceneMaterialDiagnostics {
+        var diagnostics = SceneMaterialDiagnostics()
+
+        scene.rootNode.enumerateChildNodes { node, _ in
+            guard let geometry = node.geometry else {
+                return
+            }
+
+            diagnostics.geometryCount += 1
+            diagnostics.triangleCount += geometry.elements.reduce(0) { total, element in
+                total + (element.primitiveType == .triangles ? element.primitiveCount : 0)
+            }
+
+            for material in geometry.materials {
+                diagnostics.materialCount += 1
+
+                let diffuseTexture = isTextureBacked(material.diffuse)
+                let normalTexture = isTextureBacked(material.normal)
+                let textureSlots = [
+                    material.diffuse,
+                    material.normal,
+                    material.ambientOcclusion,
+                    material.emission,
+                    material.metalness,
+                    material.multiply,
+                    material.reflective,
+                    material.roughness,
+                    material.specular,
+                    material.transparent,
+                ].filter(isTextureBacked(_:)).count
+
+                if diffuseTexture {
+                    diagnostics.diffuseTextureMaterialCount += 1
+                }
+                if normalTexture {
+                    diagnostics.normalMapMaterialCount += 1
+                }
+                if textureSlots > 0 {
+                    diagnostics.texturedMaterialCount += 1
+                    diagnostics.textureSlotCount += textureSlots
+                }
+                if material.lightingModel == .physicallyBased {
+                    diagnostics.pbrMaterialCount += 1
+                }
+            }
+        }
+
+        return diagnostics
+    }
+
+    private static func isTextureBacked(_ property: SCNMaterialProperty) -> Bool {
+        guard let contents = property.contents else {
+            return false
+        }
+        if contents is NSColor || contents is NSNumber {
+            return false
+        }
+        return true
+    }
+
+    private static func inferredMaterialQuality(
+        diagnostics: SceneMaterialDiagnostics,
+        format: LoadFormat
+    ) -> String {
+        switch format {
+        case .gltf, .glb:
+            if diagnostics.texturedMaterialCount > 0 || diagnostics.pbrMaterialCount > 0 {
+                return "full"
+            }
+            return "possibly-degraded"
+        case .obj, .stl:
+            return diagnostics.texturedMaterialCount > 0 ? "textured" : "untextured"
+        case .step, .stp, .threeMF, .unsupported:
+            return "not-evaluated"
+        }
+    }
+
+    private static func textureResolutionHint(for url: URL) -> String {
+        switch supportedFormat(for: url) {
+        case .gltf:
+            return "external-uris-may-require-model-parent-texture-search"
+        case .glb:
+            return "glb-usually-embedded-but-external-textures-can-be-used-as-recovery-overrides"
+        default:
+            return "not-applicable"
+        }
+    }
+
+    private static func shortErrorDescription(_ error: Error) -> String {
+        let text = (error as NSError).localizedDescription
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(text.prefix(220))
     }
 
     private static func applyMeshLightingFixups(to modelRoot: SCNNode) {

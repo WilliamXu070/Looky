@@ -74,3 +74,27 @@ If launch via `open` fails in CI/headless contexts, run direct binary as a fallb
 - For extension registration issues after update channel changes:
   - compare `com.johnboiles.QuickLookStep` bundle IDs in `QuickLookStep/QuickLookStep.xcodeproj/project.pbxproj`
   - rebuild + rerun this skill.
+
+## 2026-07-03 Update
+
+### Problem context
+- QuickLook preview for some STEP/STP models still behaved like legacy handling after rebuilds, while direct host launch showed the new app but extension routing still skipped newer registration paths.
+
+### What changed
+- Extended `/Users/williamxu/Desktop/Projects/quicklook/testing/scripts/register-file-types.sh` to include STEP/STP identifiers:
+  - `public.step`, `com.shapr3d.step`, `com.shapr3d.stp`, `a360.step`, `com.johnboiles.step`.
+- Used this after syncing `/Applications/QuickLookStep.app` and `qlmanage` cache reset.
+
+### Why it helped
+- Helps avoid QuickLook claiming old/partial handlers for STEP-family formats and forces explicit QuickLookStep binding in the registration step.
+
+### Validation
+- `testing/scripts/register-file-types.sh /Applications/QuickLookStep.app`
+- `qlmanage -r && qlmanage -r cache`
+- `killall QuickLookUIService Finder || true`
+- `open -a /Applications/QuickLookStep.app --args --sample /path/to/model.glb`
+
+```text
+content change: expanded STEP/STP coverage in register-file-types.sh.
+example usage: run immediately after each rebuild to avoid stale handler claims for STEP/STP previews.
+```

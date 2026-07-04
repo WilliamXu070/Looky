@@ -68,6 +68,17 @@ For any bug fix or generated insight, include:
 2. affected skill references updated (or "no update needed" with rationale)
 3. quick follow-up check
 
+## QuickLook Commit Build Guard
+
+- Run `make install-quicklook-hooks` once per workspace.
+- `make install-quicklook-hooks` sets `core.hooksPath` to `.githooks` so commits run `pre-commit`.
+- The tracked `.githooks/pre-commit` executes `make quicklook-commit-build` before every commit unless `SKIP_QUICKLOOK_PRECOMMIT=1`.
+- The guarded build is:
+  - `make foxtrot.h`
+  - `make libfoxtrot_universal.a`
+  - `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- This is intended for local development velocity control; if you need a fast docs-only commit, use `SKIP_QUICKLOOK_PRECOMMIT=1 git commit ...` explicitly.
+
 This keeps the Skills tab aligned with current team knowledge and avoids stale guidance.
 
 ### Example of skill usage entry

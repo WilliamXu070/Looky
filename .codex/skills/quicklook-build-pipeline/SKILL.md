@@ -119,3 +119,25 @@ xcodebuild \
 - `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
 - `find build/Build/Products/Debug/QuickLookStep.app/Contents/Resources -maxdepth 1 -name '*.metallib' -print -exec ls -lh {} \;`
 - If `SelectionMetalAccelerator` logs that the kernel is missing, first confirm `default.metallib` exists in the app bundle before editing `project.pbxproj`.
+
+## 2026-07-04 Update
+
+### Problem context
+- Commit-time build verification was manual and easy to skip during fast iteration, so QuickLook commits could land without rebuilding Spotlight and app targets.
+
+### What changed
+- Added the repo-level pre-commit flow using `.githooks/pre-commit` and Makefile targets:
+  - `quicklook-commit-build`
+  - `install-quicklook-hooks`
+- The commit hook runs `make quicklook-commit-build` before allowing `git commit`, and can be bypassed with `SKIP_QUICKLOOK_PRECOMMIT=1`.
+- `quicklook-commit-build` executes `make foxtrot.h`, `make libfoxtrot_universal.a`, and Debug `xcodebuild` for `QuickLookStep` with signing disabled.
+
+### Why it helped
+- Keeps Swift/Foxtrot/Rust-linked QuickLook app path consistent on every commit without relying on memory.
+- Reduces the chance of shipping commits that do not compile for local preview/extension workflows.
+
+### Validation
+- Run `make install-quicklook-hooks` once.
+- Run `make quicklook-commit-build` manually at least once.
+- Confirm commit path logs: `QuickLookStep pre-commit build guard: running make quicklook-commit-build`.
+- Use `SKIP_QUICKLOOK_PRECOMMIT=1 git commit ...` for intentional emergency bypasses.

@@ -347,3 +347,24 @@ testing/scripts/verify_quicklook_ui_launch.sh
 - `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
 - `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/measurement-viewer-cube-hole.json testing/results/measurement-viewer-cube-hole.json`
 - `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app /Users/williamxu/Desktop/Projects/quicklook/testing/input/cube_hole.step /tmp/quicklook-ui-launch-measurement.png`
+
+## 2026-07-04 Update
+
+### Problem context
+- User requested temporary operational disablement of surface detection to reduce jump-to-surface regressions during live manual testing.
+
+### What changed
+- Switched launch default for `edgeOnlyMode` in [QuickLookStepApp.swift](/Users/williamxu/Desktop/Projects/quicklook/QuickLookStep/QuickLookStep/QuickLookStepApp.swift) to `true` so selection stays edge-only by default.
+- Existing `--edge-only` / `--edge-only=1` and `QLS_EDGE_ONLY=1` flags still force edge-only behavior; `--edge-only=0`/`QLS_EDGE_ONLY=0` now re-enables surface logic for targeted checks.
+
+### Why it helped
+- Prevents automatic fallback-to-surface routing for ambiguous clicks while the surface pathway is being tuned, with minimum behavioral disturbance to edge-path logic.
+
+### Validation
+- Build: `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- Manual check: launch normally and verify surface mode no longer appears in click outcomes; re-run with `--edge-only=0` if surface behavior checks are needed.
+
+```text
+content change: default launch behavior changed to edge-only mode.
+example usage: run without `--edge-only=0` while triaging edge clicks; pass `--edge-only=0` only when you want surface selection back.
+```

@@ -17,6 +17,11 @@ import CoreServices
 
 let bundleIdentifier = "com.johnboiles.QuickLookStep" as NSString
 let types: [String] = [
+    "public.step",
+    "com.shapr3d.step",
+    "com.shapr3d.stp",
+    "a360.step",
+    "com.johnboiles.step",
     "public.geometry-definition-format",
     "public.standard-tesselated-geometry-format",
     "org.khronos.gltf",
