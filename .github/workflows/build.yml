@@ -16,6 +16,9 @@ permissions:
 jobs:
   build:
     runs-on: macos-latest
+    env:
+      HAS_SIGNING_CERT: ${{ github.event_name != 'pull_request' && secrets.MACOS_CERTIFICATE_P12_BASE64 != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' }}
+      HAS_NOTARY_KEYS: ${{ github.event_name != 'pull_request' && secrets.APPSTORE_CONNECT_API_KEY_ID != '' && secrets.APPSTORE_CONNECT_API_ISSUER_ID != '' && secrets.APPSTORE_CONNECT_API_PRIVATE_KEY != '' }}
 
     steps:
       - name: Checkout
@@ -27,7 +30,7 @@ jobs:
           xcode-version: latest-stable
 
       - name: Import signing certificate
-        if: github.event_name != 'pull_request'
+        if: env.HAS_SIGNING_CERT == 'true'
         uses: apple-actions/import-codesign-certs@v2
         with:
           p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
@@ -35,12 +38,18 @@ jobs:
 
       - name: Archive
         run: |
+          SIGNING_ARGS=""
+          if [ "${HAS_SIGNING_CERT}" != "true" ]; then
+            echo "Signing certificate not configured; building unsigned for CI visibility."
+            SIGNING_ARGS="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=\"\""
+          fi
           xcodebuild \
             -project QuickLookStep/QuickLookStep.xcodeproj \
             -scheme QuickLookStep \
             -configuration Release \
             -destination "generic/platform=macOS" \
             -archivePath "$PWD/build/QuickLookStep.xcarchive" \
+            $SIGNING_ARGS \
             archive
 
       - name: Package app
@@ -49,7 +58,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$PWD/build/QuickLookStep.zip"
 
       - name: Notarize
-        if: github.event_name != 'pull_request'
+        if: env.HAS_SIGNING_CERT == 'true' && env.HAS_NOTARY_KEYS == 'true'
         env:
           APPSTORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ID }}
           APPSTORE_CONNECT_API_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_API_ISSUER_ID }}
@@ -64,7 +73,7 @@ jobs:
             --wait
 
       - name: Staple
-        if: github.event_name != 'pull_request'
+        if: env.HAS_SIGNING_CERT == 'true' && env.HAS_NOTARY_KEYS == 'true'
         run: |
           APP_PATH="$PWD/build/QuickLookStep.xcarchive/Products/Applications/QuickLookStep.app"
           xcrun stapler staple "$APP_PATH"

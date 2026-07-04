@@ -17,6 +17,8 @@ Create secrets:
 - `MACOS_CERTIFICATE_P12_BASE64`: base64 output of the .p12
 - `MACOS_CERTIFICATE_PASSWORD`: password used when exporting the .p12
 
+If either secret is not set, the workflow now still runs an archive build with signing disabled (`CODE_SIGNING_ALLOWED=NO`) and skips notarization/stapling. This keeps branch validation green on forks or unsigned builds, but notarization artifacts are only produced when all signing/notary secrets are present.
+
 Note: For GitHub releases (outside the Mac App Store), you want a **Developer ID Application**
 certificate. Apple Distribution is for the Mac App Store.
 

@@ -141,3 +141,25 @@ xcodebuild \
 - Run `make quicklook-commit-build` manually at least once.
 - Confirm commit path logs: `QuickLookStep pre-commit build guard: running make quicklook-commit-build`.
 - Use `SKIP_QUICKLOOK_PRECOMMIT=1 git commit ...` for intentional emergency bypasses.
+
+## 2026-07-04 Update
+
+### Problem context
+- CI pushes were blocked by the import-codesign action with: `one of p12-filepath or p12-file-base64 must be provided`, especially in forks or unsigned environments.
+
+### What changed
+- Updated `.github/workflows/build.yml` to guard signing/notarization steps behind secret availability checks.
+- Archive now falls back to `CODE_SIGNING_ALLOWED=NO` when cert secrets are missing, so validation builds continue instead of failing early.
+
+### Why it helped
+- Prevents hard failures on unsigned runners while keeping notarization/stapling strictly limited to configured signing environments.
+
+### Validation
+- Push from a repo without signing secrets: job should still complete Archive with signing disabled and skip import/notarize/staple.
+- Push from a fully configured repo: import cert, notarize, and staple steps should run as before.
+
+### content change
+- In `.github/workflows/README.md`, documented that CI continues in unsigned mode when cert secrets are missing and that notarization remains secret-gated.
+
+### example usage
+- When push fails with the p12 message, inspect secrets in the workflow settings first; use fork pushes to validate without release signing, then add `MACOS_CERTIFICATE_P12_BASE64` and `MACOS_CERTIFICATE_PASSWORD` before publishing tagged releases.
