@@ -391,3 +391,26 @@ example usage: run without `--edge-only=0` while triaging edge clicks; pass `--e
 content change: multi-edge measurement now records expandable XYZ distance diagnostics.
 example usage: Shift-select two edges in the viewer, open Distance Details, and inspect min/max distance, per-axis deltas, and closest points.
 ```
+
+## 2026-07-04 Update
+
+### Problem context
+- A normal single edge click could appear as one "Single" selection while actually measuring/highlighting an inferred connected feature chain (for example `300 u`, 5 points, `line-segment -> ...`).
+
+### What changed
+- User-facing fitted-mode edge measurement/highlight now derives points from `edgeSnap.selectedEdge` endpoints instead of `resolved.chainWorldPoints`.
+- Connected/debug/download chain data remains available; explicit connected mode still uses the broader chain.
+- Added `testing/plans/measurement-single-edge-no-overmerge-cube-hole.json` as a regression plan.
+
+### Why it helped
+- Restores the expected CAD behavior: one click measures exactly one edge, while multi-edge measurement requires Shift/Cmd accumulation.
+
+### Validation
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/measurement-single-edge-no-overmerge-cube-hole.json testing/results/measurement-single-edge-no-overmerge-cube-hole.json`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/measurement-multi-edge-details-cube-hole.json testing/results/measurement-multi-edge-details-cube-hole.json`
+
+```text
+content change: fitted single-click edge display and measurement now use selected edge endpoints.
+example usage: when a "Single" measurement shows combined edge chains, run the no-overmerge plan and verify length stays near one edge with `pointCount: 2`.
+```

@@ -1,0 +1,38 @@
+{
+  "scenarios": [
+    {
+      "name": "measurement-single-edge-no-overmerge-cube-hole",
+      "file": "testing/input/cube_hole.step",
+      "actions": [
+        {
+          "kind": "setMeasurementUnit",
+          "unit": "model",
+          "mmPerModelUnit": 1.0,
+          "durationMs": 40,
+          "measurementExpect": {
+            "kind": "empty",
+            "entityCount": 0,
+            "unitMode": "model"
+          }
+        },
+        {
+          "kind": "selectAt",
+          "x": 0.5,
+          "y": 0.5,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "edge"
+          },
+          "measurementExpect": {
+            "kind": "edge",
+            "entityCount": 1,
+            "minTotalLength": 99.0,
+            "maxTotalLength": 101.0,
+            "unitMode": "model"
+          },
+          "durationMs": 100
+        }
+      ]
+    }
+  ]
+}

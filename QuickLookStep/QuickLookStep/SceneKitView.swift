@@ -379,6 +379,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             if didDraw {
                 updateMeasurementStateForEdge(
                     resolved,
+                    hit: hit,
                     modifiers: modifierNames,
                     scene: scene
                 )
@@ -492,7 +493,15 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
                 }
             }
         } else {
-            overlayRoot.addChildNode(makeEdgeChainNode(points: chainWorldPoints))
+            if let selectedEdgeNode = makeSelectedEdgeNode(
+                edge: edgeSnap.selectedEdge,
+                using: hit.node,
+                meshVertices: mesh.vertices
+            ) {
+                overlayRoot.addChildNode(selectedEdgeNode)
+            } else {
+                overlayRoot.addChildNode(makeEdgeChainNode(points: chainWorldPoints))
+            }
         }
         updateScreenStableHighlights()
 
@@ -590,10 +599,11 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
 
     private func updateMeasurementStateForEdge(
         _ resolved: EdgeSelectionCandidate,
+        hit: SCNHitTestResult,
         modifiers: [String],
         scene: SCNScene
     ) {
-        let entity = makeEdgeMeasurementEntity(resolved)
+        let entity = makeEdgeMeasurementEntity(resolved, hit: hit)
         let isCommand = modifiers.contains("command")
         let isShift = modifiers.contains("shift")
 
@@ -666,10 +676,11 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
     }
 
     private func makeEdgeMeasurementEntity(
-        _ resolved: EdgeSelectionCandidate
+        _ resolved: EdgeSelectionCandidate,
+        hit: SCNHitTestResult
     ) -> SelectionMeasurementEntity {
         let edge = resolved.edgeSnap.selectedEdge
-        let points = resolved.chainWorldPoints
+        let points = userFacingEdgePoints(for: resolved, hit: hit)
         let shapeDetection = EdgeShapeDetector.analyze(points: points)
         let shapeLabel = shapeDetection.detectedShape == "unknown" ? "Edge" : shapeDetection.detectedShape
         let radius = shapeDetection.segments.compactMap(\.circleRadius).first
@@ -692,6 +703,26 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
             surfaceType: nil,
             points: points.map { $0.asArray() }
         )
+    }
+
+    private func userFacingEdgePoints(
+        for resolved: EdgeSelectionCandidate,
+        hit: SCNHitTestResult
+    ) -> [SIMD3<Float>] {
+        if edgeSelectionMode == .connected {
+            return resolved.chainWorldPoints
+        }
+
+        guard let geometry = hit.node.geometry,
+              let mesh = meshTopology(for: geometry),
+              let points = selectedEdgeWorldPoints(
+                edge: resolved.edgeSnap.selectedEdge,
+                using: hit.node,
+                meshVertices: mesh.vertices
+              ) else {
+            return resolved.chainWorldPoints
+        }
+        return points
     }
 
     private func makeSurfaceMeasurementEntity(
@@ -1574,6 +1605,17 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         using node: SCNNode,
         meshVertices: [SIMD3<Float>]
     ) -> SCNNode? {
+        guard let points = selectedEdgeWorldPoints(edge: edge, using: node, meshVertices: meshVertices) else {
+            return nil
+        }
+        return makeEdgeChainNode(points: points)
+    }
+
+    private func selectedEdgeWorldPoints(
+        edge: EdgeKey,
+        using node: SCNNode,
+        meshVertices: [SIMD3<Float>]
+    ) -> [SIMD3<Float>]? {
         guard edge.a >= 0, edge.b >= 0,
               edge.a < meshVertices.count, edge.b < meshVertices.count else {
             return nil
@@ -1583,7 +1625,7 @@ private final class DebugSelectableSCNView: SCNView, SCNSceneRendererDelegate {
         let localEnd = meshVertices[edge.b]
         let worldStart = simdVector(node.convertPosition(scnVector(localStart), to: nil))
         let worldEnd = simdVector(node.convertPosition(scnVector(localEnd), to: nil))
-        return makeEdgeChainNode(points: [worldStart, worldEnd])
+        return [worldStart, worldEnd]
     }
 
     private func makeConnectedComponentNode(
