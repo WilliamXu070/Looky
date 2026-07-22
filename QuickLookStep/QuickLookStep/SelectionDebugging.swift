@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import QuickLookCore
 import SceneKit
 import simd
 
@@ -39,7 +40,7 @@ extension DebugSelectableSCNView {
             event,
             outputDirectory: selectionDebugOutputDirectory,
             hasBeforeImage: beforeImage != nil,
-            hasAfterImage: true
+            hasAfterImage: selectionDebugScreenshotsEnabled
         )
         onSelectionDebugEvent?(prepared)
         DispatchQueue.main.async { [weak self] in
@@ -47,7 +48,7 @@ extension DebugSelectableSCNView {
             SelectionDebugRecorder.shared.record(
                 event: prepared,
                 beforeImage: beforeImage,
-                afterImage: self.snapshot(),
+                afterImage: self.selectionDebugScreenshotsEnabled ? self.snapshot() : nil,
                 outputDirectory: self.selectionDebugOutputDirectory
             )
         }
@@ -71,30 +72,66 @@ extension DebugSelectableSCNView {
         let selectedEdgePointCount: Int
         let selectedSurfaceTriangleCount: Int
         let selectedEntityID: String?
+        let source: String?
+        let sourceEntityID: String?
+        let surfaceType: String?
+        let curveType: String?
+        let fitRMS: Float?
+        let fitMaximumResidual: Float?
+        let projectedEdgeDistancePoints: Float?
         let seedTriangle: Int?
 
         switch resolvedSelection {
+        case .point(_, let pointSelection):
+            selectedEdgePointCount = 1
+            selectedSurfaceTriangleCount = 0
+            seedTriangle = probe.seedTriangle
+            selectedEntityID = pointSelection.semanticPoint.id.rawValue
+            source = pointSelection.semanticPoint.entitySource.rawValue
+            sourceEntityID = selectionDebugSourceEntityID(pointSelection.semanticPoint.id.rawValue)
+            surfaceType = nil
+            curveType = nil
+            fitRMS = nil
+            fitMaximumResidual = nil
+            projectedEdgeDistancePoints = pointSelection.projectedDistancePoints
         case .surface(let hit, let surfaceSelection):
             selectedEdgePointCount = 0
             selectedSurfaceTriangleCount = surfaceSelection.triangleIndices.count
             seedTriangle = surfaceSelection.seedTriangle
-            if let geometry = hit.node.geometry,
-               let selectionModel = selectionModel(for: geometry),
-               let patchID = selectionModel.surfacePatchID(forTriangle: SelectionTriangleID(rawValue: surfaceSelection.seedTriangle)) {
-                selectedEntityID = "\(selectionEntityScope(for: hit.node)):surfacePatch:\(patchID.rawValue)"
-            } else {
-                selectedEntityID = "\(selectionEntityScope(for: hit.node)):surfaceSeed:\(surfaceSelection.seedTriangle)"
-            }
+            selectedEntityID = surfaceSelection.semanticSurface?.id.rawValue
+                ?? "\(selectionEntityScope(for: hit.node)):surfaceSeed:\(surfaceSelection.seedTriangle)"
+            source = surfaceSelection.semanticSurface?.entitySource.rawValue
+            sourceEntityID = selectedEntityID.map(selectionDebugSourceEntityID)
+            surfaceType = surfaceSelection.semanticSurface?.descriptor.kind.rawValue
+            curveType = nil
+            fitRMS = surfaceSelection.semanticSurface?.descriptor.fitRMS
+            fitMaximumResidual = surfaceSelection.semanticSurface?.descriptor.fitMaximumResidual
+            projectedEdgeDistancePoints = nil
         case .edge(let hit, let edgeSelection):
             selectedEdgePointCount = edgeSelection.chainWorldPoints.count
             selectedSurfaceTriangleCount = 0
             seedTriangle = edgeSelection.edgeSnap.selectedTriangle
-            selectedEntityID = "\(selectionEntityScope(for: hit.node)):edge:\(edgeSelection.edgeSnap.selectedEdge.a)-\(edgeSelection.edgeSnap.selectedEdge.b)"
+            selectedEntityID = edgeSelection.semanticEdge?.id.rawValue
+                ?? "\(selectionEntityScope(for: hit.node)):edge:\(edgeSelection.edgeSnap.selectedEdge.a)-\(edgeSelection.edgeSnap.selectedEdge.b)"
+            source = edgeSelection.semanticEdge?.entitySource.rawValue
+            sourceEntityID = selectedEntityID.map(selectionDebugSourceEntityID)
+            surfaceType = nil
+            curveType = edgeSelection.semanticEdge?.descriptor.kind.rawValue
+            fitRMS = edgeSelection.semanticEdge?.descriptor.fitRMS
+            fitMaximumResidual = edgeSelection.semanticEdge?.descriptor.fitMaximumResidual
+            projectedEdgeDistancePoints = edgeSelection.projectedDistancePoints
         case nil:
             selectedEdgePointCount = 0
             selectedSurfaceTriangleCount = 0
             seedTriangle = probe.seedTriangle
             selectedEntityID = nil
+            source = nil
+            sourceEntityID = nil
+            surfaceType = nil
+            curveType = nil
+            fitRMS = nil
+            fitMaximumResidual = nil
+            projectedEdgeDistancePoints = nil
         }
 
         let finalKind = probe.resolvedKind
@@ -137,6 +174,15 @@ extension DebugSelectableSCNView {
             resolver: SelectionDebugResolver(
                 finalKind: finalKind,
                 selectedEntityID: selectedEntityID,
+                source: source,
+                sourceEntityID: sourceEntityID,
+                surfaceType: surfaceType,
+                curveType: curveType,
+                fitRMS: fitRMS,
+                fitMaximumResidual: fitMaximumResidual,
+                projectedEdgeDistancePoints: projectedEdgeDistancePoints,
+                candidateRank: resolvedSelection == nil ? nil : 1,
+                rejectionCode: lastSelectionRejectionCode?.rawValue,
                 selectedSurfaceTriangleCount: selectedSurfaceTriangleCount,
                 selectedEdgePointCount: selectedEdgePointCount,
                 seedTriangle: seedTriangle,
@@ -164,6 +210,11 @@ extension DebugSelectableSCNView {
         )
     }
 
+    func selectionDebugSourceEntityID(_ qualifiedID: String) -> String {
+        guard let range = qualifiedID.range(of: ":step:") else { return qualifiedID }
+        return String(qualifiedID[qualifiedID.index(after: range.lowerBound)...])
+    }
+
     func selectionDebugReason(
         finalKind: String,
         selectedSurfaceTriangleCount: Int,
@@ -182,6 +233,9 @@ extension DebugSelectableSCNView {
             }
             return "edge selected: \(selectedEdgePointCount) points"
         default:
+            if let code = lastSelectionRejectionCode {
+                return "none: \(code.rawValue)"
+            }
             if probe.sceneNodeName == nil {
                 return "none: no non-overlay hit"
             }
@@ -265,6 +319,18 @@ extension DebugSelectableSCNView {
         for resolvedSelection: ResolvedSelection?
     ) -> SelectionDebugRenderValidation {
         switch resolvedSelection {
+        case .point(_, let pointSelection):
+            let point = pointSelection.worldPosition
+            return SelectionDebugRenderValidation(
+                selectedTriangleCount: 0,
+                selectedEdgePointCount: 1,
+                localBoundsMin: point.asArray(),
+                localBoundsMax: point.asArray(),
+                materialMode: "selection-overlay-point",
+                readsDepth: true,
+                writesDepth: false,
+                clippingWarning: nil
+            )
         case .surface(let hit, let surfaceSelection):
             guard let geometry = hit.node.geometry,
                   let selectionModel = selectionModel(for: geometry) else {
@@ -273,9 +339,9 @@ extension DebugSelectableSCNView {
                     selectedEdgePointCount: 0,
                     localBoundsMin: nil,
                     localBoundsMax: nil,
-                    materialMode: "replacement-two-material-geometry",
+                    materialMode: "selected-triangle-lit-depth-tested-overlay",
                     readsDepth: true,
-                    writesDepth: true,
+                    writesDepth: false,
                     clippingWarning: "selected surface model unavailable for finite bounds"
                 )
             }
@@ -300,9 +366,9 @@ extension DebugSelectableSCNView {
                 selectedEdgePointCount: 0,
                 localBoundsMin: bounds?.min.asArray(),
                 localBoundsMax: bounds?.max.asArray(),
-                materialMode: "replacement-two-material-geometry",
+                materialMode: "selected-triangle-lit-depth-tested-overlay",
                 readsDepth: true,
-                writesDepth: true,
+                writesDepth: false,
                 clippingWarning: warning
             )
         case .edge(_, let edgeSelection):
@@ -441,9 +507,10 @@ extension DebugSelectableSCNView {
 
     func clearDebugSelection(from scene: SCNScene) {
         screenStableHighlightNodes.removeAll()
-        scene.rootNode
-            .childNode(withName: selectionRootName, recursively: false)?
-            .removeFromParentNode()
+        if let overlay = scene.rootNode.childNode(withName: selectionRootName, recursively: false) {
+            overlay.isHidden = true
+            overlay.removeFromParentNode()
+        }
     }
 
 }

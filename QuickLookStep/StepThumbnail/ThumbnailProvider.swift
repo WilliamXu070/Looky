@@ -29,7 +29,13 @@ class ThumbnailProvider: QLThumbnailProvider {
                 let pixelSize = CGSize(width: pointSize.width * scale, height: pointSize.height * scale)
 
                 let t0 = CFAbsoluteTimeGetCurrent()
-                let image = renderer.snapshot(atTime: 0, with: pixelSize, antialiasingMode: .multisampling4X)
+                _ = renderer.prepare(scene, shouldAbortBlock: nil)
+                renderer.render(atTime: 0)
+                let image = renderer.snapshot(
+                    atTime: 1.0 / 60.0,
+                    with: pixelSize,
+                    antialiasingMode: .multisampling4X
+                )
                 let snapshotMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000.0
                 NSLog("renderer.snapshot finished in %.2f ms", snapshotMs)
 

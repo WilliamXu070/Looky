@@ -41,6 +41,7 @@ export QLS_TEST_PLAN="$PLAN"
 export QLS_TEST_OUTPUT="$OUTPUT"
 export QLS_TEST_AUTO_QUIT="1"
 export QLS_TEST_FILE=""
+export QLS_BACKGROUND_TEST="1"
 
 APP_ARGS=(
   "--test-plan"
@@ -48,7 +49,24 @@ APP_ARGS=(
   "--test-output"
   "$OUTPUT"
   "--auto-quit"
+  "--background-test"
 )
+
+APP_PID=""
+cleanup() {
+  if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" 2>/dev/null; then
+    kill "$APP_PID" 2>/dev/null || true
+    for _ in {1..20}; do
+      kill -0 "$APP_PID" 2>/dev/null || break
+      sleep 0.05
+    done
+    kill -9 "$APP_PID" 2>/dev/null || true
+  fi
+  if [[ -n "$APP_PID" ]]; then
+    wait "$APP_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
 
 wait_for_output() {
   local target="$1"
@@ -58,6 +76,11 @@ wait_for_output() {
   while (( elapsed < max_wait )); do
     if [[ -f "$target" ]]; then
       return 0
+    fi
+    if [[ -n "${APP_PID:-}" ]] && ! kill -0 "$APP_PID" 2>/dev/null; then
+      echo "QuickLookStep exited before writing output: $target"
+      tail -80 /tmp/quicklookstep-open.log 2>/dev/null || true
+      return 1
     fi
     sleep 1
     elapsed=$((elapsed + 1))
@@ -69,34 +92,9 @@ wait_for_output() {
 }
 
 launch() {
-  OPEN_LAUNCHED_WITH_OPEN=0
-
-  if [[ "${QLS_FORCE_DIRECT_LAUNCH:-0}" == "1" ]]; then
-    OPEN_LAUNCHED_WITH_OPEN=0
-    "$APP" "${APP_ARGS[@]}"
-    return
-  fi
-
-  if [[ -d "${APP_BUNDLE}" && -n "${APP_BUNDLE}" && -x /usr/bin/open ]]; then
-    OPEN_LAUNCHED_WITH_OPEN=1
-    if ! open -n "$APP_BUNDLE" --args "${APP_ARGS[@]}" >/tmp/quicklookstep-open.log 2>&1; then
-      echo "open failed. This often means no active GUI session is available."
-      if grep -q "NoExecutable" /tmp/quicklookstep-open.log; then
-        echo "LaunchServices reports the app bundle executable is missing."
-        echo "Current bundle: $APP_BUNDLE"
-      fi
-      if [[ "${QLS_FORCE_DIRECT_LAUNCH:-0}" == "1" ]]; then
-        echo "Attempting direct launch because QLS_FORCE_DIRECT_LAUNCH=1"
-        "$APP" "${APP_ARGS[@]}"
-      else
-        echo "Set QLS_FORCE_DIRECT_LAUNCH=1 to force direct binary launch."
-        return 1
-      fi
-    fi
-    return
-  fi
-
-  "$APP" "${APP_ARGS[@]}"
+  : > /tmp/quicklookstep-open.log
+  "$APP" "${APP_ARGS[@]}" >/tmp/quicklookstep-open.log 2>&1 &
+  APP_PID=$!
 }
 
 if ! launch; then
@@ -140,6 +138,17 @@ for report in data.get("reports", []):
                     event.get("actionIndex"),
                     event.get("action"),
                     measurement_failures,
+                    None,
+                )
+            )
+        hover_failures = event.get("hoverExpectationFailures") or []
+        if hover_failures:
+            failures.append(
+                (
+                    scenario,
+                    event.get("actionIndex"),
+                    event.get("action"),
+                    hover_failures,
                     None,
                 )
             )

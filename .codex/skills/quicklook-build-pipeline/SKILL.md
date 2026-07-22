@@ -220,3 +220,72 @@ xcodebuild \
 content change: disabled Xcode's injected Debug-dylib layout for repository Debug builds.
 example usage: after a signing-disabled build, run the selection golden directly without codesign repair or LaunchServices.
 ```
+
+## 2026-07-22 Cross-Format Render Parity Update
+
+### Problem context
+- Equivalent GLB, glTF, OBJ, STL, and 3MF meshes rendered with radial crease artifacts, unintended 3MF blue coloring, or blank STL snapshots.
+
+### What changed
+- `SceneComposer` rebuilds missing or invalid zero normals per triangle corner, smoothing only within a 35-degree crease boundary while preserving other geometry sources and material slots.
+- Unstyled mesh formats use one neutral material, while authored textures, OBJ materials, glTF materials, and 3MF colors remain preserved.
+- Off-screen test and thumbnail renderers prepare SceneKit resources before capture.
+- Added `testing/selection-engine/scripts/check_render_parity.swift` for fixed-camera nonblank, silhouette, and shading comparison.
+
+### Why it helped
+- The equivalent cube-hole assets now produce byte-identical fixed-camera PNGs across all five non-STEP formats, with no crease starburst, blue fallback, or blank STL frame.
+
+### Validation
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/selection-semantic-mesh-formats.json testing/results/selection-semantic-mesh-formats.json`
+- `testing/selection-engine/scripts/check_render_parity.swift testing/results/selection-semantic-mesh-formats.json`
+- `shasum -a 256 testing/results/screenshots/semantic-mesh-*/*fixed-isometric-camera.png`
+- `make quicklook-commit-build`
+
+```text
+content change: documented crease-aware normal repair, authored-style preservation, prepared snapshots, and the cross-format image parity gate.
+example usage: when one imported format is black, blue, or visibly faceted differently, run the semantic mesh plan and parity checker before changing importer-specific lighting.
+```
+
+## 2026-07-22 STEP Measurement Unit ABI Update
+
+### Problem context
+- Foxtrot returned source-space coordinates but did not expose the STEP length unit, so the viewer could not distinguish metres from millimetres after normalization.
+
+### What changed
+- The FFI mesh slice now includes `length_unit`; `make foxtrot.h` and `make libfoxtrot_universal.a` must run after changing that ABI before building the Xcode targets.
+
+### Why it helped
+- Prevents a stale generated header or static library from silently reporting the wrong measurement scale while Swift sources appear correct.
+
+### Validation
+- `cargo test --manifest-path ffi/Cargo.toml`
+- `make foxtrot.h && make libfoxtrot_universal.a`
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- Confirm cube-hole loader metadata contains `sourceUnit: meter` and a selected 0.0508-source-unit edge displays as `50.8 mm`.
+
+```text
+content change: documented the Foxtrot length-unit ABI and mandatory header/static-library regeneration order.
+example usage: when STEP measurements are off by 1000, rebuild foxtrot.h and libfoxtrot_universal.a before diagnosing Swift conversion math.
+```
+
+## 2026-07-22 Vendored Foxtrot Update
+
+### Problem context
+- Semantic STEP selection changed Foxtrot's topology output, but a submodule pointer to an unpublished commit made the parent Looky repository impossible to clone and build reproducibly.
+
+### What changed
+- Foxtrot is tracked directly under `foxtrot/` by Looky; it is no longer a separately published submodule.
+- `foxtrot/target/` and its generated `Cargo.lock` remain ignored, so local Rust build output is not committed.
+
+### Why it helped
+- One Looky clone now contains the exact parser and triangulation source required by the Swift FFI and semantic-selection engine.
+
+### Validation
+- `git ls-files --stage foxtrot | head` must show regular files, not a mode-`160000` gitlink.
+- `git check-ignore -v foxtrot/target foxtrot/Cargo.lock`
+- `make quicklook-commit-build`
+
+```text
+content change: documented that modified Foxtrot source is vendored in Looky and its build products remain ignored.
+example usage: after changing STEP topology output, commit the matching foxtrot source, FFI header, and universal library together in Looky.
+```

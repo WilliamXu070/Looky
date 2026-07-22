@@ -7,6 +7,18 @@ public enum EdgePrimitive: Equatable, Sendable {
 }
 
 public enum EdgePrimitiveFitter {
+    public struct FittedCircle: Equatable, Sendable {
+        public let center: SIMD3<Float>
+        public let normal: SIMD3<Float>
+        public let radius: Float
+
+        public init(center: SIMD3<Float>, normal: SIMD3<Float>, radius: Float) {
+            self.center = center
+            self.normal = normal
+            self.radius = radius
+        }
+    }
+
     public static func fit(points: [SIMD3<Float>], tolerance: Float) -> EdgePrimitive? {
         guard points.count >= 2 else { return nil }
         let length = GeometryMath.polylineLength(points)
@@ -27,6 +39,57 @@ public enum EdgePrimitiveFitter {
             return .arc(radius: circle.radius, sweepRadians: min(2 * .pi, length / circle.radius))
         }
         return .polyline(length: length)
+    }
+
+    /// Fits a stable 3D circle for semantic curve-center points without changing the
+    /// edge classifier's existing line/arc decision path.
+    public static func fittedCircle(
+        points: [SIMD3<Float>],
+        tolerance: Float
+    ) -> FittedCircle? {
+        let tolerance = max(tolerance, 1e-7)
+        var unique: [SIMD3<Float>] = []
+        unique.reserveCapacity(points.count)
+        for point in points where !unique.contains(where: { simd_distance($0, point) <= tolerance }) {
+            unique.append(point)
+        }
+        guard unique.count >= 3, let first = unique.first else { return nil }
+
+        guard let second = unique.max(by: {
+            simd_distance_squared(first, $0) < simd_distance_squared(first, $1)
+        }), simd_distance(first, second) > tolerance else {
+            return nil
+        }
+        let axis = GeometryMath.normalized(second - first, fallback: .zero)
+        guard let third = unique.max(by: {
+            distanceSquaredFromLine($0, origin: first, direction: axis)
+                < distanceSquaredFromLine($1, origin: first, direction: axis)
+        }), distanceSquaredFromLine(third, origin: first, direction: axis) > tolerance * tolerance,
+              let circle = circleThrough(first, second, third) else {
+            return nil
+        }
+
+        let normal = GeometryMath.normalized(
+            simd_cross(second - first, third - first),
+            fallback: .zero
+        )
+        guard simd_length_squared(normal) > 0 else { return nil }
+        for point in unique {
+            let planeError = abs(simd_dot(point - first, normal))
+            let radialError = abs(simd_distance(point, circle.center) - circle.radius)
+            guard planeError <= tolerance, radialError <= tolerance else { return nil }
+        }
+        return FittedCircle(center: circle.center, normal: normal, radius: circle.radius)
+    }
+
+    private static func distanceSquaredFromLine(
+        _ point: SIMD3<Float>,
+        origin: SIMD3<Float>,
+        direction: SIMD3<Float>
+    ) -> Float {
+        let offset = point - origin
+        let rejection = offset - direction * simd_dot(offset, direction)
+        return simd_length_squared(rejection)
     }
 
     private static func circleThrough(

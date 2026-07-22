@@ -1,0 +1,143 @@
+{
+  "scenarios": [
+    {
+      "name": "semantic-step-cube-hole",
+      "file": "testing/input/cube_hole.step",
+      "actions": [
+        {
+          "kind": "wait",
+          "label": "selection-index-ready",
+          "durationMs": 100
+        },
+        {
+          "kind": "setCamera",
+          "label": "fixed-isometric-camera",
+          "orientationDegrees": [-35.26440328855924, 44.9999978371445, -0.000013215309125452213],
+          "cameraPosition": [147.83978271484375, 147.83978271484375, 147.83978271484375],
+          "fieldOfView": 45,
+          "durationMs": 40
+        },
+        {
+          "kind": "selectAt",
+          "label": "exact-top-plane",
+          "x": 0.5,
+          "y": 0.62,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "surface",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:face:128",
+            "surfaceType": "plane",
+            "surfaceTriangleCount": 2
+          },
+          "durationMs": 80
+        },
+        {
+          "kind": "selectAt",
+          "label": "exact-front-plane-around-hole",
+          "x": 0.5,
+          "y": 0.38,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "surface",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:face:130",
+            "surfaceType": "plane",
+            "surfaceTriangleCount": 67
+          },
+          "durationMs": 80
+        },
+        {
+          "kind": "selectAt",
+          "label": "internal-cylinder-surface",
+          "x": 0.44,
+          "y": 0.465,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "surface",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:face:129",
+            "surfaceType": "cylinder",
+            "surfaceTriangleCount": 126
+          },
+          "durationMs": 80
+        },
+        {
+          "kind": "selectAt",
+          "label": "circular-rim-near-edge",
+          "x": 0.42,
+          "y": 0.45,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "edge",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:63",
+            "curveType": "circle",
+            "maxProjectedEdgeDistancePoints": 6
+          },
+          "measurementExpect": {
+            "kind": "edge",
+            "entityCount": 1
+          },
+          "durationMs": 80
+        },
+        {
+          "kind": "selectAt",
+          "label": "add-line-edge",
+          "x": 0.5,
+          "y": 0.5,
+          "coordinateSpace": "normalizedViewport",
+          "modifiers": ["shift"],
+          "expect": {
+            "kind": "edge",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:62",
+            "curveType": "line",
+            "maxProjectedEdgeDistancePoints": 6
+          },
+          "measurementExpect": {
+            "kind": "multiEdge",
+            "entityCount": 2
+          },
+          "durationMs": 80
+        },
+        {
+          "kind": "selectAt",
+          "label": "toggle-line-edge-off",
+          "x": 0.5,
+          "y": 0.5,
+          "coordinateSpace": "normalizedViewport",
+          "modifiers": ["command"],
+          "expect": {
+            "kind": "edge",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:62",
+            "curveType": "line",
+            "maxProjectedEdgeDistancePoints": 6
+          },
+          "measurementExpect": {
+            "kind": "edge",
+            "entityCount": 1
+          },
+          "durationMs": 80
+        },
+        {
+          "kind": "selectAt",
+          "label": "blank-clears-selection",
+          "x": 0.05,
+          "y": 0.05,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "none",
+            "reasonCode": "invalid-hit"
+          },
+          "measurementExpect": {
+            "kind": "empty",
+            "entityCount": 0
+          },
+          "durationMs": 80
+        }
+      ]
+    }
+  ]
+}

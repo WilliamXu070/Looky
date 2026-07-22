@@ -9,6 +9,9 @@ struct SceneKitAssetImporter: ModelImporter {
         let methods = format == .obj
             ? OBJImportPolicy().preferredMethods
             : STLImportPolicy().preferredMethods
+        let materialPolicy = format == .obj
+            ? OBJImportPolicy().materialPolicy(for: request.url)
+            : STLImportPolicy().materialPolicy
         var failures: [String] = []
 
         for method in methods {
@@ -16,9 +19,15 @@ struct SceneKitAssetImporter: ModelImporter {
                 let scene: SCNScene
                 switch method {
                 case "scenekit":
-                    scene = try SceneKitAssetLoader.loadWithSceneKit(request.url)
+                    scene = try SceneKitAssetLoader.loadWithSceneKit(
+                        request.url,
+                        materialPolicy: materialPolicy
+                    )
                 case "modelio":
-                    scene = try SceneKitAssetLoader.loadWithModelIO(request.url)
+                    scene = try SceneKitAssetLoader.loadWithModelIO(
+                        request.url,
+                        materialPolicy: materialPolicy
+                    )
                 default:
                     continue
                 }

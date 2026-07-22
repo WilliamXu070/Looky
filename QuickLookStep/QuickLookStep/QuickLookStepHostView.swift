@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Metal
 import Quartz
+import QuickLookCore
 import SceneKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -28,8 +29,10 @@ struct QuickLookStepHostView: View {
     @State private var automatedTestingTask: Task<Void, Never>? = nil
     @StateObject var viewerSession = ViewerSession()
     @StateObject private var viewerTestDriver = ViewerTestDriver()
-    @AppStorage("quicklook.measurement.unit") private var measurementUnitRaw = MeasurementUnit.model.rawValue
-    @AppStorage("quicklook.measurement.mmPerModelUnit") private var mmPerModelUnit = 1.0
+    @StateObject private var viewerSelectionDriver = ViewerSelectionDriver()
+    @AppStorage("quicklook.measurement.unit") private var measurementUnitRaw = MeasurementUnit.millimeters.rawValue
+    @AppStorage("quicklook.measurement.mmPerModelUnit") private var legacyMillimetersPerUnit = 1.0
+    @State private var measurementScaleOverride: Double?
 
     init(
         testingPlanPath: String? = nil,
@@ -76,6 +79,24 @@ struct QuickLookStepHostView: View {
         MeasurementUnit.resolved(from: measurementUnitRaw)
     }
 
+    private var measurementScaleContext: MeasurementScaleContext {
+        MeasurementScaleContext(
+            sourceUnit: viewerSession.measurementSourceUnit,
+            millimetersPerSourceUnitOverride: measurementScaleOverride
+        )
+    }
+
+    private var measurementScaleBinding: Binding<Double> {
+        Binding(
+            get: { measurementScaleContext.millimetersPerSourceUnit },
+            set: { value in
+                guard value.isFinite, value > 0 else { return }
+                measurementScaleOverride = value
+                persistMeasurementScaleOverride(value)
+            }
+        )
+    }
+
     var body: some View {
         ZStack {
             if let scene = viewerSession.scene {
@@ -92,6 +113,7 @@ struct QuickLookStepHostView: View {
                     selectionDebugMode: selectionDebugEnabled || selectionDebugHUDEnabled,
                     selectionDebugOutputDirectory: selectionDebugOutputPath ?? "/tmp/quicklook-selection-debug",
                     loaderMetadata: viewerSession.loaderMetadata,
+                    topologyHints: viewerSession.topologyHints,
                     onSelectionDebugEvent: { event in
                         viewerSession.latestDebugEvent = event
                     },
@@ -100,7 +122,8 @@ struct QuickLookStepHostView: View {
                         viewerSession.measurementPanelHidden = false
                     },
                     manualSelectionEnabled: testingPlanPath == nil || hasManualLoad,
-                    testDriver: viewerTestDriver
+                    testDriver: viewerTestDriver,
+                    selectionDriver: viewerSelectionDriver
                 )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -129,7 +152,12 @@ struct QuickLookStepHostView: View {
                 SelectionMeasurementPanel(
                     state: viewerSession.measurementState,
                     unit: measurementUnitBinding,
-                    mmPerModelUnit: $mmPerModelUnit,
+                    mmPerSourceUnit: measurementScaleBinding,
+                    scaleIsAssumed: measurementScaleContext.isAssumed,
+                    onResetScale: resetMeasurementScale,
+                    onRemoveEntity: { entityID in
+                        viewerSelectionDriver.removeMeasurementEntity(id: entityID)
+                    },
                     onClose: {
                         viewerSession.measurementPanelHidden = true
                     }
@@ -177,6 +205,9 @@ struct QuickLookStepHostView: View {
             return true
         }
         .background(isTargeted ? Color.accentColor.opacity(0.2) : Color.clear)
+        .onChange(of: viewerSession.loaderMetadata) {
+            loadMeasurementScaleOverride()
+        }
         .onOpenURL { url in
             guard url.isFileURL else { return }
             handleManualLoad(url)
@@ -189,6 +220,41 @@ struct QuickLookStepHostView: View {
             automatedTestingTask?.cancel()
             automatedTestingTask = nil
         }
+    }
+
+    private var measurementScaleStorageKey: String {
+        let identity = viewerSession.loaderMetadata["modelHash"]
+            ?? (viewerSession.modelPath.isEmpty ? "default" : viewerSession.modelPath)
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in identity.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return String(format: "quicklook.measurement.scale.%016llx", hash)
+    }
+
+    private func loadMeasurementScaleOverride() {
+        if let stored = UserDefaults.standard.object(forKey: measurementScaleStorageKey) as? NSNumber,
+           stored.doubleValue.isFinite,
+           stored.doubleValue > 0 {
+            measurementScaleOverride = stored.doubleValue
+        } else if legacyMillimetersPerUnit.isFinite,
+                  legacyMillimetersPerUnit > 0,
+                  legacyMillimetersPerUnit != 1 {
+            measurementScaleOverride = legacyMillimetersPerUnit
+            persistMeasurementScaleOverride(legacyMillimetersPerUnit)
+        } else {
+            measurementScaleOverride = nil
+        }
+    }
+
+    private func persistMeasurementScaleOverride(_ value: Double) {
+        UserDefaults.standard.set(value, forKey: measurementScaleStorageKey)
+    }
+
+    private func resetMeasurementScale() {
+        UserDefaults.standard.removeObject(forKey: measurementScaleStorageKey)
+        measurementScaleOverride = nil
     }
 
     @MainActor
@@ -228,9 +294,13 @@ struct QuickLookStepHostView: View {
     private func runAutomatedTest(plan: TestingPlan) async throws {
         let runStart = CFAbsoluteTimeGetCurrent()
         var reports: [TestingRunReport] = []
+        let captureTestingSnapshots = ProcessInfo.processInfo.environment[
+            "QLS_DISABLE_TESTING_SNAPSHOTS"
+        ] != "1"
         let outputDirectory = defaultTestingOutputURL().deletingLastPathComponent()
         let screenshotsDirectory = outputDirectory.appendingPathComponent("screenshots")
-        if !FileManager.default.fileExists(atPath: screenshotsDirectory.path) {
+        if captureTestingSnapshots,
+           !FileManager.default.fileExists(atPath: screenshotsDirectory.path) {
             try FileManager.default.createDirectory(at: screenshotsDirectory, withIntermediateDirectories: true)
         }
 
@@ -257,7 +327,9 @@ struct QuickLookStepHostView: View {
                 NSLog("Could not load scene for %@", scenario.file)
                 continue
             }
-            let capturedLoadSnapshot = saveSnapshot(scene, for: sceneLoadSnapshotPath)
+            let capturedLoadSnapshot = captureTestingSnapshots
+                ? saveSnapshot(scene, for: sceneLoadSnapshotPath)
+                : nil
 
             var events: [TestingSample] = []
             events.append(cameraSnapshot(
@@ -272,13 +344,19 @@ struct QuickLookStepHostView: View {
                 actionDurationMs: loadElapsedMs,
                 selectionDebugEvent: nil,
                 selectionDebugExpectationFailures: nil,
+                hoverSummary: nil,
+                hoverExpectationFailures: nil,
+                hoverResolverPassCount: viewerTestDriver.hoverResolverPassCount,
+                hoverResolverPassDelta: nil,
                 measurementExpectationFailures: nil,
                 scene: scene
             ))
             try await Task.sleep(nanoseconds: 120_000_000)
 
             for (index, action) in scenario.actions.enumerated() {
+                let actionLabel = action.label ?? action.kind.rawValue
                 let actionStart = CFAbsoluteTimeGetCurrent()
+                let hoverResolverPassesBefore = viewerTestDriver.hoverResolverPassCount
                 try Task.checkCancellation()
                 if hasManualLoad { return }
 
@@ -299,11 +377,13 @@ struct QuickLookStepHostView: View {
 
                 let snapshotTarget = snapshotPath(
                     for: scenario,
-                    action: action.kind.rawValue,
+                    action: actionLabel,
                     actionIndex: index,
                     phase: "post-action"
                 )
-                let capturedSnapshot = saveSnapshot(scene, for: snapshotTarget)
+                let capturedSnapshot = captureTestingSnapshots
+                    ? saveSnapshot(scene, for: snapshotTarget)
+                    : nil
 
                 let actionElapsedMs = (CFAbsoluteTimeGetCurrent() - actionStart) * 1000
                 let expectationFailures = selectionExpectationFailures(
@@ -329,10 +409,27 @@ struct QuickLookStepHostView: View {
                         measurementFailures.joined(separator: "; ")
                     )
                 }
+                let hoverSummary = action.kind == .hoverAt
+                    ? viewerTestDriver.lastPerformedHoverSummary
+                    : viewerTestDriver.hoverSummary
+                let hoverResolverPassCount = viewerTestDriver.hoverResolverPassCount
+                let hoverResolverPassDelta = hoverResolverPassCount - hoverResolverPassesBefore
+                let hoverFailures = hoverExpectationFailures(
+                    summary: hoverSummary,
+                    expectation: action.hoverExpect,
+                    resolverPassDelta: hoverResolverPassDelta
+                )
+                if !hoverFailures.isEmpty {
+                    NSLog(
+                        "Testing hover expectation failed action=%ld failures=%@",
+                        index,
+                        hoverFailures.joined(separator: "; ")
+                    )
+                }
 
                 events.append(cameraSnapshot(
                     for: scenario,
-                    action: action.kind.rawValue,
+                    action: actionLabel,
                     actionIndex: index,
                     phase: "post-action",
                     start: runStart,
@@ -342,6 +439,10 @@ struct QuickLookStepHostView: View {
                     actionDurationMs: actionElapsedMs,
                     selectionDebugEvent: selectionEvent,
                     selectionDebugExpectationFailures: expectationFailures.isEmpty ? nil : expectationFailures,
+                    hoverSummary: hoverSummary,
+                    hoverExpectationFailures: hoverFailures.isEmpty ? nil : hoverFailures,
+                    hoverResolverPassCount: hoverResolverPassCount,
+                    hoverResolverPassDelta: hoverResolverPassDelta,
                     measurementExpectationFailures: measurementFailures.isEmpty ? nil : measurementFailures,
                     scene: scene
                 ))
@@ -483,6 +584,29 @@ struct QuickLookStepHostView: View {
                 event?.eventPath ?? "none"
             )
             return event
+        case .hoverAt:
+            guard let x = action.x,
+                  let y = action.y else {
+                NSLog("Testing hoverAt skipped: missing x/y")
+                return nil
+            }
+            let request = SelectionDebugHoverAtRequest(
+                x: x,
+                y: y,
+                coordinateSpace: action.coordinateSpace ?? .normalizedViewport
+            )
+            let snapshot = viewerTestDriver.performHoverAt(request)
+            NSLog(
+                "Testing hoverAt x=%.4f y=%.4f space=%@ result=%@ entity=%@ elapsedMs=%.2f",
+                x,
+                y,
+                request.coordinateSpace.rawValue,
+                snapshot?.summary.kind ?? "none",
+                snapshot?.summary.selectedEntityID ?? "none",
+                snapshot?.elapsedMs ?? 0
+            )
+        case .clearHover:
+            viewerTestDriver.clearHover()
         case .setCamera:
             if let orientationDegrees = action.orientationDegrees,
                orientationDegrees.count >= 3 {
@@ -506,13 +630,15 @@ struct QuickLookStepHostView: View {
         case .setMeasurementUnit:
             if let unit = action.unit,
                MeasurementUnit(rawValue: unit) != nil {
-                measurementUnitRaw = unit
+                measurementUnitRaw = MeasurementUnit.resolved(from: unit).rawValue
             }
             if let scale = action.mmPerModelUnit,
                scale.isFinite,
                scale > 0 {
-                mmPerModelUnit = scale
+                measurementScaleOverride = scale
             }
+        case .resetMeasurementScale:
+            measurementScaleOverride = nil
         case .wait:
             break
         }
@@ -532,6 +658,10 @@ struct QuickLookStepHostView: View {
         actionDurationMs: Double? = nil,
         selectionDebugEvent: SelectionDebugEvent?,
         selectionDebugExpectationFailures: [String]?,
+        hoverSummary: HoverSelectionSummary?,
+        hoverExpectationFailures: [String]?,
+        hoverResolverPassCount: Int,
+        hoverResolverPassDelta: Int?,
         measurementExpectationFailures: [String]?,
         scene: SCNScene
     ) -> TestingSample {
@@ -557,6 +687,10 @@ struct QuickLookStepHostView: View {
                 selectionDebugEventPath: selectionDebugEvent?.eventPath,
                 selectionDebugSummary: selectionDebugEvent?.summary,
                 selectionDebugExpectationFailures: selectionDebugExpectationFailures,
+                hoverSummary: hoverSummary,
+                hoverExpectationFailures: hoverExpectationFailures,
+                hoverResolverPassCount: hoverResolverPassCount,
+                hoverResolverPassDelta: hoverResolverPassDelta,
                 measurementSummary: measurementSummaryForTesting(),
                 measurementExpectationFailures: measurementExpectationFailures
             )
@@ -580,6 +714,10 @@ struct QuickLookStepHostView: View {
             selectionDebugEventPath: selectionDebugEvent?.eventPath,
             selectionDebugSummary: selectionDebugEvent?.summary,
             selectionDebugExpectationFailures: selectionDebugExpectationFailures,
+            hoverSummary: hoverSummary,
+            hoverExpectationFailures: hoverExpectationFailures,
+            hoverResolverPassCount: hoverResolverPassCount,
+            hoverResolverPassDelta: hoverResolverPassDelta,
             measurementSummary: measurementSummaryForTesting(),
             measurementExpectationFailures: measurementExpectationFailures
         )
@@ -600,6 +738,35 @@ struct QuickLookStepHostView: View {
         if let kind = expectation.kind,
            event.resolver.finalKind != kind {
             failures.append("kind expected \(kind), got \(event.resolver.finalKind)")
+        }
+        if let source = expectation.source,
+           event.resolver.source != source {
+            failures.append("source expected \(source), got \(event.resolver.source ?? "nil")")
+        }
+        if let sourceEntityID = expectation.sourceEntityID,
+           event.resolver.sourceEntityID != sourceEntityID {
+            failures.append("sourceEntityID expected \(sourceEntityID), got \(event.resolver.sourceEntityID ?? "nil")")
+        }
+        if let surfaceType = expectation.surfaceType,
+           event.resolver.surfaceType != surfaceType {
+            failures.append("surfaceType expected \(surfaceType), got \(event.resolver.surfaceType ?? "nil")")
+        }
+        if let curveType = expectation.curveType,
+           event.resolver.curveType != curveType {
+            failures.append("curveType expected \(curveType), got \(event.resolver.curveType ?? "nil")")
+        }
+        if let reasonCode = expectation.reasonCode,
+           event.resolver.rejectionCode != reasonCode {
+            failures.append("reasonCode expected \(reasonCode), got \(event.resolver.rejectionCode ?? "nil")")
+        }
+        if let maximumDistance = expectation.maxProjectedEdgeDistancePoints {
+            guard let actualDistance = event.resolver.projectedEdgeDistancePoints else {
+                failures.append("projected edge distance missing")
+                return failures
+            }
+            if actualDistance > maximumDistance {
+                failures.append("projected edge distance expected <= \(maximumDistance), got \(actualDistance)")
+            }
         }
         if let count = expectation.surfaceTriangleCount,
            event.resolver.selectedSurfaceTriangleCount != count {
@@ -632,8 +799,47 @@ struct QuickLookStepHostView: View {
         return failures
     }
 
+    private func hoverExpectationFailures(
+        summary: HoverSelectionSummary?,
+        expectation: HoverSelectionExpectation?,
+        resolverPassDelta: Int
+    ) -> [String] {
+        guard let expectation else { return [] }
+        let actualKind = summary?.kind ?? "none"
+        var failures: [String] = []
+        if let kind = expectation.kind, actualKind != kind {
+            failures.append("hover kind expected \(kind), got \(actualKind)")
+        }
+        if let entityID = expectation.sourceEntityID,
+           summary?.selectedEntityID != entityID,
+           summary?.selectedEntityID?.hasSuffix(entityID) != true {
+            failures.append("hover sourceEntityID expected \(entityID), got \(summary?.selectedEntityID ?? "nil")")
+        }
+        if let pointKind = expectation.pointKind,
+           summary?.pointKind != pointKind {
+            failures.append("hover pointKind expected \(pointKind), got \(summary?.pointKind ?? "nil")")
+        }
+        if let maxElapsedMs = expectation.maxElapsedMs {
+            guard let elapsedMs = summary?.elapsedMs else {
+                failures.append("hover elapsedMs missing")
+                return failures
+            }
+            if elapsedMs > maxElapsedMs {
+                failures.append("hover elapsedMs expected <= \(maxElapsedMs), got \(elapsedMs)")
+            }
+        }
+        if let expectedDelta = expectation.resolverPassDelta,
+           resolverPassDelta != expectedDelta {
+            failures.append("hover resolverPassDelta expected \(expectedDelta), got \(resolverPassDelta)")
+        }
+        return failures
+    }
+
     private func measurementSummaryForTesting() -> SelectionMeasurementSummary {
-        viewerSession.measurementState.summary.withUnitMode(currentMeasurementUnit)
+        viewerSession.measurementState.summary.convertedForTesting(
+            unit: currentMeasurementUnit,
+            millimetersPerSourceUnit: measurementScaleContext.millimetersPerSourceUnit
+        )
     }
 
     private func measurementExpectationFailures(
@@ -654,8 +860,12 @@ struct QuickLookStepHostView: View {
             failures.append("measurement entityCount expected \(entityCount), got \(summary.entityCount)")
         }
         if let unitMode = expectation.unitMode,
-           summary.unitMode != unitMode {
-            failures.append("measurement unitMode expected \(unitMode), got \(summary.unitMode ?? "nil")")
+           summary.unitMode != MeasurementUnit.resolved(from: unitMode).rawValue {
+            failures.append("measurement unitMode expected \(MeasurementUnit.resolved(from: unitMode).rawValue), got \(summary.unitMode ?? "nil")")
+        }
+        if let relation = expectation.relation,
+           summary.relation != relation {
+            failures.append("measurement relation expected \(relation), got \(summary.relation ?? "nil")")
         }
 
         let totalLength = summary.totalLength ?? summary.length
@@ -740,8 +950,10 @@ struct QuickLookStepHostView: View {
         renderer.pointOfView = scene.rootNode.childNode(withName: "camera", recursively: true)
 
         let start = CFAbsoluteTimeGetCurrent()
+        _ = renderer.prepare(scene, shouldAbortBlock: nil)
+        renderer.render(atTime: 0)
         let image = renderer.snapshot(
-            atTime: 0,
+            atTime: 1.0 / 60.0,
             with: imageSize,
             antialiasingMode: .multisampling4X
         )

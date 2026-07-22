@@ -1,0 +1,194 @@
+{
+  "scenarios": [
+    {
+      "name": "cad-hover-preselection-cube-hole",
+      "file": "testing/input/cube_hole.step",
+      "actions": [
+        {
+          "kind": "wait",
+          "label": "selection-index-ready",
+          "durationMs": 150
+        },
+        {
+          "kind": "setCamera",
+          "label": "fixed-isometric-camera",
+          "orientationDegrees": [-35.26440328855924, 44.9999978371445, -0.000013215309125452213],
+          "cameraPosition": [147.83978271484375, 147.83978271484375, 147.83978271484375],
+          "fieldOfView": 45,
+          "durationMs": 60
+        },
+        {
+          "kind": "hoverAt",
+          "label": "warm-hover-resolver",
+          "x": 0.5,
+          "y": 0.62,
+          "coordinateSpace": "normalizedViewport",
+          "durationMs": 40
+        },
+        {
+          "kind": "hoverAt",
+          "label": "face-hover",
+          "x": 0.5,
+          "y": 0.62,
+          "coordinateSpace": "normalizedViewport",
+          "hoverExpect": {
+            "kind": "surface",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:face:128"
+          },
+          "measurementExpect": { "kind": "empty", "entityCount": 0 },
+          "durationMs": 40
+        },
+        {
+          "kind": "hoverAt",
+          "label": "rim-edge-hover",
+          "x": 0.42,
+          "y": 0.45,
+          "coordinateSpace": "normalizedViewport",
+          "hoverExpect": {
+            "kind": "edge",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:63"
+          },
+          "measurementExpect": { "kind": "empty", "entityCount": 0 },
+          "durationMs": 40
+        },
+        {
+          "kind": "selectAt",
+          "label": "click-commits-hovered-edge-id",
+          "x": 0.42,
+          "y": 0.45,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "edge",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:63",
+            "curveType": "circle"
+          },
+          "measurementExpect": { "kind": "edge", "entityCount": 1 },
+          "durationMs": 40
+        },
+        {
+          "kind": "hoverAt",
+          "label": "curve-center-hover",
+          "x": 0.44,
+          "y": 0.45,
+          "coordinateSpace": "normalizedViewport",
+          "hoverExpect": {
+            "kind": "point",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:63:point:center",
+            "pointKind": "curve-center"
+          },
+          "measurementExpect": { "kind": "edge", "entityCount": 1 },
+          "durationMs": 40
+        },
+        {
+          "kind": "selectAt",
+          "label": "click-commits-hovered-center-id",
+          "x": 0.44,
+          "y": 0.45,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "point",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:63:point:center"
+          },
+          "measurementExpect": { "kind": "point", "entityCount": 1 },
+          "durationMs": 40
+        },
+        {
+          "kind": "setCamera",
+          "label": "fixed-center-cursor-zoom-refreshes-to-face",
+          "fieldOfView": 40,
+          "hoverExpect": { "kind": "surface" },
+          "measurementExpect": { "kind": "point", "entityCount": 1 },
+          "durationMs": 80
+        },
+        {
+          "kind": "setCamera",
+          "label": "restore-fov",
+          "fieldOfView": 45,
+          "durationMs": 80
+        },
+        {
+          "kind": "hoverAt",
+          "label": "vertex-hover-acquire",
+          "x": 0.3383,
+          "y": 0.6460,
+          "coordinateSpace": "normalizedViewport",
+          "hoverExpect": { "kind": "point", "pointKind": "vertex" },
+          "measurementExpect": { "kind": "point", "entityCount": 1 },
+          "durationMs": 40
+        },
+        {
+          "kind": "hoverAt",
+          "label": "vertex-hover-release-hysteresis",
+          "x": 0.3410,
+          "y": 0.6460,
+          "coordinateSpace": "normalizedViewport",
+          "hoverExpect": { "kind": "point", "pointKind": "vertex" },
+          "measurementExpect": { "kind": "point", "entityCount": 1 },
+          "durationMs": 40
+        },
+        {
+          "kind": "setCamera",
+          "label": "fixed-vertex-cursor-zoom-refreshes-to-edge",
+          "fieldOfView": 44,
+          "hoverExpect": {
+            "kind": "edge",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:62"
+          },
+          "measurementExpect": { "kind": "point", "entityCount": 1 },
+          "durationMs": 80
+        },
+        {
+          "kind": "setCamera",
+          "label": "restore-camera-before-orbit",
+          "orientationDegrees": [-35.26440328855924, 44.9999978371445, -0.000013215309125452213],
+          "cameraPosition": [147.83978271484375, 147.83978271484375, 147.83978271484375],
+          "fieldOfView": 45,
+          "durationMs": 80
+        },
+        {
+          "kind": "hoverAt",
+          "label": "face-hover-before-orbit",
+          "x": 0.5,
+          "y": 0.62,
+          "coordinateSpace": "normalizedViewport",
+          "hoverExpect": { "kind": "surface" },
+          "measurementExpect": { "kind": "point", "entityCount": 1 },
+          "durationMs": 40
+        },
+        {
+          "kind": "rotateY",
+          "label": "fixed-cursor-orbit-refresh",
+          "value": 2,
+          "hoverExpect": { "kind": "surface" },
+          "measurementExpect": { "kind": "point", "entityCount": 1 },
+          "durationMs": 80
+        },
+        {
+          "kind": "hoverAt",
+          "label": "blank-hover",
+          "x": 0.05,
+          "y": 0.05,
+          "coordinateSpace": "normalizedViewport",
+          "hoverExpect": { "kind": "none" },
+          "measurementExpect": { "kind": "point", "entityCount": 1 },
+          "durationMs": 40
+        },
+        {
+          "kind": "clearHover",
+          "label": "mouse-exit",
+          "hoverExpect": { "kind": "none", "resolverPassDelta": 0 },
+          "measurementExpect": { "kind": "point", "entityCount": 1 }
+        },
+        {
+          "kind": "wait",
+          "label": "idle-does-not-resolve",
+          "durationMs": 100,
+          "hoverExpect": { "kind": "none", "resolverPassDelta": 0 },
+          "measurementExpect": { "kind": "point", "entityCount": 1 }
+        }
+      ]
+    }
+  ]
+}

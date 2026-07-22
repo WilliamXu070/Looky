@@ -1,4 +1,5 @@
 import Foundation
+import QuickLookCore
 import SceneKit
 
 @MainActor
@@ -7,6 +8,8 @@ final class ViewerSession: ObservableObject {
     @Published var loadError: String?
     @Published var modelPath = ""
     @Published var loaderMetadata: [String: String] = [:]
+    @Published var topologyHints: ImportedTopologyHints = .empty
+    @Published var measurementSourceUnit: ModelUnit = .unknown
     @Published var latestDebugEvent: SelectionDebugEvent?
     @Published var measurementState: SelectionMeasurementState = .empty
     @Published var measurementPanelHidden = false
@@ -15,6 +18,8 @@ final class ViewerSession: ObservableObject {
         loadError = nil
         modelPath = url.path
         latestDebugEvent = nil
+        topologyHints = .empty
+        measurementSourceUnit = .unknown
         measurementState = .empty
         measurementPanelHidden = false
     }
@@ -29,6 +34,8 @@ final class ViewerSession: ObservableObject {
             imported.sourceTransform.sourceCenter.z,
         ].map { String($0) }.joined(separator: ",")
         loaderMetadata = metadata
+        topologyHints = imported.topologyHints
+        measurementSourceUnit = imported.sourceUnit.coreMeasurementUnit
         scene = imported.scene
         return metadata
     }
@@ -36,8 +43,23 @@ final class ViewerSession: ObservableObject {
     func failLoading(_ error: Error) {
         scene = nil
         loaderMetadata = [:]
+        topologyHints = .empty
+        measurementSourceUnit = .unknown
         measurementState = .empty
         measurementPanelHidden = false
         loadError = error.localizedDescription
+    }
+}
+
+private extension ImportedModelUnit {
+    var coreMeasurementUnit: ModelUnit {
+        switch self {
+        case .unknown: .unknown
+        case .millimeter: .millimeter
+        case .centimeter: .centimeter
+        case .meter: .meter
+        case .inch: .inch
+        case .foot: .foot
+        }
     }
 }

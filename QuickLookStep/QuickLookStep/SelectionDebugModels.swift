@@ -8,6 +8,12 @@ enum SelectionDebugCoordinateSpace: String, Codable {
 
 struct SelectionDebugExpectation: Codable {
     let kind: String?
+    let source: String?
+    let sourceEntityID: String?
+    let surfaceType: String?
+    let curveType: String?
+    let reasonCode: String?
+    let maxProjectedEdgeDistancePoints: Float?
     let surfaceTriangleCount: Int?
     let minSurfaceTriangleCount: Int?
     let maxSurfaceTriangleCount: Int?
@@ -21,6 +27,12 @@ struct SelectionDebugSelectAtRequest {
     let coordinateSpace: SelectionDebugCoordinateSpace
     let expectation: SelectionDebugExpectation?
     let modifiers: [String]?
+}
+
+struct SelectionDebugHoverAtRequest {
+    let x: Double
+    let y: Double
+    let coordinateSpace: SelectionDebugCoordinateSpace
 }
 
 struct SelectionDebugSession: Codable {
@@ -114,6 +126,15 @@ struct SelectionDebugHitTest: Codable {
 struct SelectionDebugResolver: Codable {
     let finalKind: String
     let selectedEntityID: String?
+    let source: String?
+    let sourceEntityID: String?
+    let surfaceType: String?
+    let curveType: String?
+    let fitRMS: Float?
+    let fitMaximumResidual: Float?
+    let projectedEdgeDistancePoints: Float?
+    let candidateRank: Int?
+    let rejectionCode: String?
     let selectedSurfaceTriangleCount: Int
     let selectedEdgePointCount: Int
     let seedTriangle: Int?
@@ -209,7 +230,7 @@ final class SelectionDebugSessionWriter {
         }
 
         let session = SelectionDebugSession(
-            schemaVersion: 1,
+            schemaVersion: 2,
             producedAt: producedAt,
             updatedAt: now,
             outputDirectory: outputDirectory,

@@ -22,6 +22,7 @@ private struct LaunchSettings {
     let selectionDebugHUDEnabled: Bool
     let edgeSelectionMode: EdgeSelectionMode
     let edgeOnlyMode: Bool
+    let backgroundMode: Bool
 }
 
 private func parseEdgeSelectionMode(from value: String) -> EdgeSelectionMode {
@@ -56,6 +57,7 @@ private func parseLaunchSettings(from arguments: [String]) -> LaunchSettings {
     var selectionDebugHUDEnabled = false
     var edgeSelectionMode: EdgeSelectionMode = .fitted
     var edgeOnlyMode = false
+    var backgroundMode = false
 
     while idx < arguments.count {
         let arg = arguments[idx]
@@ -72,6 +74,8 @@ private func parseLaunchSettings(from arguments: [String]) -> LaunchSettings {
             testOutputPath = arguments[idx]
         } else if arg == "--auto-quit" || arg == "--auto-quit=1" {
             autoQuitAfterTesting = true
+        } else if arg == "--background-test" || arg == "--background-test=1" {
+            backgroundMode = true
         } else if arg == "--edge-probe" || arg == "--edge-probe=1" {
             edgeProbeEnabled = true
         } else if arg == "--edge-probe=0" {
@@ -141,7 +145,8 @@ private func parseLaunchSettings(from arguments: [String]) -> LaunchSettings {
         selectionDebugOutputPath: selectionDebugOutputPath,
         selectionDebugHUDEnabled: selectionDebugHUDEnabled,
         edgeSelectionMode: edgeSelectionMode,
-        edgeOnlyMode: edgeOnlyMode
+        edgeOnlyMode: edgeOnlyMode,
+        backgroundMode: backgroundMode
     )
 }
 
@@ -163,6 +168,7 @@ private func resolveLaunchSettings() -> LaunchSettings {
     let envSelectionMode = env["QLS_EDGE_SELECTION_MODE"]?.trimmingCharacters(in: .whitespacesAndNewlines)
     let edgeSelectionMode = parseEdgeSelectionMode(from: envSelectionMode ?? "fitted")
     let envEdgeOnly = env["QLS_EDGE_ONLY"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let envBackgroundMode = env["QLS_BACKGROUND_TEST"]?.trimmingCharacters(in: .whitespacesAndNewlines)
 
     return LaunchSettings(
         testingPlanPath: (testPlan == "") ? nil : (testPlan ?? cli.testingPlanPath),
@@ -177,7 +183,10 @@ private func resolveLaunchSettings() -> LaunchSettings {
         selectionDebugOutputPath: (selectionDebugOutput == "") ? nil : (selectionDebugOutput ?? cli.selectionDebugOutputPath),
         selectionDebugHUDEnabled: (selectionDebugHUD == "1") || cli.selectionDebugHUDEnabled,
         edgeSelectionMode: envSelectionMode == nil ? cli.edgeSelectionMode : edgeSelectionMode,
-        edgeOnlyMode: (envEdgeOnly == "1") || cli.edgeOnlyMode
+        edgeOnlyMode: (envEdgeOnly == "1") || cli.edgeOnlyMode,
+        backgroundMode: envBackgroundMode == "0"
+            ? false
+            : (envBackgroundMode == "1") || cli.backgroundMode || testPlan != nil || cli.testingPlanPath != nil
     )
 }
 
@@ -222,10 +231,13 @@ private final class QuickLookAppDelegate: NSObject, NSApplicationDelegate {
     private let defaultWindowSize = NSSize(width: 1200, height: 800)
     private let minimumWindowSize = NSSize(width: 900, height: 600)
     private var hostWindow: NSWindow?
+    private lazy var launchSettings = resolveLaunchSettings()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApplication.shared.setActivationPolicy(.regular)
-        NSRunningApplication.current.activate(options: [.activateAllWindows])
+        NSApplication.shared.setActivationPolicy(launchSettings.backgroundMode ? .accessory : .regular)
+        if !launchSettings.backgroundMode {
+            NSRunningApplication.current.activate(options: [.activateAllWindows])
+        }
         appendQuickLookStepLifecycleEvent("app-delegate-did-finish")
         NSLog("QuickLookStep app launched - windowed mode activated")
 
@@ -243,7 +255,7 @@ private final class QuickLookAppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let settings = resolveLaunchSettings()
+        let settings = launchSettings
         let hostView = QuickLookStepHostView(
             testingPlanPath: settings.testingPlanPath,
             testingOutputPath: settings.testingOutputPath,
@@ -281,14 +293,17 @@ private final class QuickLookAppDelegate: NSObject, NSApplicationDelegate {
         window.minSize = minimumWindowSize
         window.contentMinSize = minimumWindowSize
         window.setContentSize(defaultWindowSize)
-        window.center()
-        hostWindow = window
-        bringHostWindowToFront(reason: "create")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            self.bringHostWindowToFront(reason: "post-create")
+        let restoredFrame = window.setFrameUsingName("QuickLookStepMainWindow")
+        window.setFrameAutosaveName("QuickLookStepMainWindow")
+        if !restoredFrame {
+            window.center()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            self.bringHostWindowToFront(reason: "post-launch")
+        hostWindow = window
+        if settings.backgroundMode {
+            window.orderBack(nil)
+            appendQuickLookStepLifecycleEvent("background-test-window \(windowStateDescription(window))")
+        } else {
+            bringHostWindowToFront(reason: "create")
         }
     }
 
@@ -303,10 +318,8 @@ private final class QuickLookAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         restoreHostWindowSizeIfNeeded(hostWindow)
-        NSRunningApplication.current.activate(options: [.activateAllWindows])
-        NSApplication.shared.activate()
+        NSApplication.shared.activate(ignoringOtherApps: true)
         hostWindow.makeKeyAndOrderFront(nil)
-        hostWindow.orderFrontRegardless()
         appendQuickLookStepLifecycleEvent("bring-front-\(reason) \(windowStateDescription(hostWindow))")
     }
 

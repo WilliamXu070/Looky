@@ -199,10 +199,6 @@ struct EdgePrimitiveIndex {
             return arc
         }
 
-        if let spline = fittedSplineSelection(in: rawPath) {
-            return spline
-        }
-
         return nil
     }
 

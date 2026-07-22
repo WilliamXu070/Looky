@@ -3,75 +3,60 @@ import QuickLookCore
 import SceneKit
 import simd
 
+/// `model` remains decodable for old plans and preferences but is never exposed in the UI.
 enum MeasurementUnit: String, Codable, CaseIterable, Identifiable {
     case model
     case millimeters = "mm"
     case inches = "in"
 
+    static let visibleCases: [MeasurementUnit] = [.millimeters, .inches]
+
     var id: String { rawValue }
-
-    var shortLabel: String {
-        switch self {
-        case .model: return "u"
-        case .millimeters: return "mm"
-        case .inches: return "in"
-        }
-    }
-
-    var areaLabel: String {
-        switch self {
-        case .model: return "u2"
-        case .millimeters: return "mm2"
-        case .inches: return "in2"
-        }
-    }
+    var shortLabel: String { self == .inches ? "in" : "mm" }
+    var areaLabel: String { self == .inches ? "in2" : "mm2" }
 
     static func resolved(from rawValue: String?) -> MeasurementUnit {
-        rawValue.flatMap(MeasurementUnit.init(rawValue:)) ?? .model
+        guard let unit = rawValue.flatMap(MeasurementUnit.init(rawValue:)), unit != .model else {
+            return .millimeters
+        }
+        return unit
     }
 
     func convertLength(_ value: Float, mmPerModelUnit: Double) -> Double {
-        let modelValue = Double(value)
-        switch self {
-        case .model:
-            return modelValue
-        case .millimeters:
-            return modelValue * mmPerModelUnit
-        case .inches:
-            return (modelValue * mmPerModelUnit) / 25.4
-        }
+        scaleContext(mmPerModelUnit).convertLength(value, to: coreUnit)
     }
 
     func convertArea(_ value: Float, mmPerModelUnit: Double) -> Double {
-        let modelValue = Double(value)
-        switch self {
-        case .model:
-            return modelValue
-        case .millimeters:
-            return modelValue * mmPerModelUnit * mmPerModelUnit
-        case .inches:
-            let inchesPerModelUnit = mmPerModelUnit / 25.4
-            return modelValue * inchesPerModelUnit * inchesPerModelUnit
-        }
+        scaleContext(mmPerModelUnit).convertArea(value, to: coreUnit)
+    }
+
+    private var coreUnit: MeasurementDisplayUnit { self == .inches ? .inches : .millimeters }
+
+    private func scaleContext(_ millimetersPerSourceUnit: Double) -> MeasurementScaleContext {
+        MeasurementScaleContext(
+            sourceUnit: .unknown,
+            millimetersPerSourceUnitOverride: millimetersPerSourceUnit
+        )
     }
 }
 
-enum SelectionMeasurementKind: String, Codable {
+enum SelectionMeasurementKind: String, Codable, Sendable {
     case empty
+    case point
     case edge
     case surface
     case multiEdge
+    case multiSurface
+    case mixed
 }
 
-enum SelectionMeasurementEntityKind: String, Codable {
-    case edge
-    case surface
-}
+typealias SelectionMeasurementEntityKind = SelectionKind
 
 struct SelectionMeasurementExpectation: Codable {
     let kind: String?
     let entityCount: Int?
     let unitMode: String?
+    let relation: String?
     let minTotalLength: Float?
     let maxTotalLength: Float?
     let minMinimumDistance: Float?
@@ -82,70 +67,87 @@ struct SelectionMeasurementExpectation: Codable {
     let maxPerimeter: Float?
 }
 
-struct SelectionMeasurementState: Codable, Equatable {
+struct SelectionMeasurementState: Codable, Equatable, Sendable {
     static let empty = SelectionMeasurementState(
         kind: .empty,
         entities: [],
-        summary: SelectionMeasurementSummary.empty
+        summary: .empty
     )
 
     let kind: SelectionMeasurementKind
     let entities: [SelectionMeasurementEntity]
     let summary: SelectionMeasurementSummary
 
-    var isEmpty: Bool {
-        kind == .empty || entities.isEmpty
-    }
+    var isEmpty: Bool { kind == .empty || entities.isEmpty }
 
-    static func singleEdge(_ entity: SelectionMeasurementEntity) -> SelectionMeasurementState {
-        SelectionMeasurementState(
-            kind: .edge,
-            entities: [entity],
-            summary: SelectionMeasurementCalculator.summary(forEdges: [entity])
-        )
-    }
+    static func entities(
+        _ entities: [SelectionMeasurementEntity],
+        includeDistanceDetail: Bool = true
+    ) -> SelectionMeasurementState {
+        let unique = SelectionMeasurementCalculator.uniqueEntities(entities)
+        guard !unique.isEmpty else { return .empty }
 
-    static func singleSurface(_ entity: SelectionMeasurementEntity) -> SelectionMeasurementState {
-        SelectionMeasurementState(
-            kind: .surface,
-            entities: [entity],
-            summary: SelectionMeasurementSummary(
-                kind: .surface,
-                entityCount: 1,
-                label: entity.label,
-                length: nil,
-                totalLength: nil,
-                area: entity.area,
-                perimeter: entity.perimeter,
-                radius: nil,
-                minimumDistance: nil,
-                maximumDistance: nil,
-                centerToCenterDistance: nil,
-                angleDegrees: nil,
-                triangleCount: entity.triangleCount,
-                pointCount: nil,
-                shape: nil,
-                surfaceType: entity.surfaceType,
-                unitMode: nil,
-                distanceDetail: nil
+        let pointCount = unique.filter { $0.kind == .point }.count
+        let edgeCount = unique.filter { $0.kind == .edge }.count
+        let surfaceCount = unique.filter { $0.kind == .surface }.count
+        let kind: SelectionMeasurementKind
+        if unique.count == 1 {
+            if pointCount == 1 {
+                kind = .point
+            } else {
+                kind = edgeCount == 1 ? .edge : .surface
+            }
+        } else if edgeCount == unique.count {
+            kind = .multiEdge
+        } else if surfaceCount == unique.count {
+            kind = .multiSurface
+        } else {
+            kind = .mixed
+        }
+        return SelectionMeasurementState(
+            kind: kind,
+            entities: unique,
+            summary: SelectionMeasurementCalculator.summary(
+                for: unique,
+                kind: kind,
+                includeDistanceDetail: includeDistanceDetail
             )
         )
     }
 
-    static func edges(_ entities: [SelectionMeasurementEntity]) -> SelectionMeasurementState {
-        let uniqueEdges = SelectionMeasurementCalculator.uniqueEdges(entities)
-        guard !uniqueEdges.isEmpty else {
-            return .empty
+    static func updating(
+        _ current: SelectionMeasurementState,
+        with entity: SelectionMeasurementEntity,
+        modifiers: [String],
+        includeDistanceDetail: Bool = true
+    ) -> SelectionMeasurementState {
+        if modifiers.contains("command") {
+            if current.entities.contains(where: { $0.id == entity.id }) {
+                return entities(
+                    current.entities.filter { $0.id != entity.id },
+                    includeDistanceDetail: includeDistanceDetail
+                )
+            }
+            return entities(current.entities + [entity], includeDistanceDetail: includeDistanceDetail)
         }
-        return SelectionMeasurementState(
-            kind: uniqueEdges.count == 1 ? .edge : .multiEdge,
-            entities: uniqueEdges,
-            summary: SelectionMeasurementCalculator.summary(forEdges: uniqueEdges)
+        if modifiers.contains("shift") {
+            return entities(current.entities + [entity], includeDistanceDetail: includeDistanceDetail)
+        }
+        return entities([entity], includeDistanceDetail: includeDistanceDetail)
+    }
+
+    func removing(
+        entityID: String,
+        includeDistanceDetail: Bool = true
+    ) -> SelectionMeasurementState {
+        Self.entities(
+            entities.filter { $0.id != entityID },
+            includeDistanceDetail: includeDistanceDetail
         )
     }
 }
 
-struct SelectionMeasurementEntity: Codable, Equatable, Identifiable {
+struct SelectionMeasurementEntity: Codable, Equatable, Identifiable, Sendable {
     let id: String
     let kind: SelectionMeasurementEntityKind
     let label: String
@@ -161,44 +163,96 @@ struct SelectionMeasurementEntity: Codable, Equatable, Identifiable {
     let points: [[Float]]
     let displayPoints: [[Float]]?
     let sourcePoints: [[Float]]?
+    let sourceTriangleVertices: [[Float]]?
+    let origin: [Float]?
+    let axis: [Float]?
+    let normal: [Float]?
 
-    var simdPoints: [SIMD3<Float>] {
-        points.compactMap { point in
-            guard point.count >= 3 else { return nil }
-            return SIMD3<Float>(point[0], point[1], point[2])
-        }
+    init(
+        id: String,
+        kind: SelectionMeasurementEntityKind,
+        label: String,
+        sourceIDs: [String],
+        length: Float?,
+        radius: Float?,
+        area: Float?,
+        perimeter: Float?,
+        triangleCount: Int?,
+        pointCount: Int?,
+        shape: String?,
+        surfaceType: String?,
+        points: [[Float]],
+        displayPoints: [[Float]]?,
+        sourcePoints: [[Float]]?,
+        sourceTriangleVertices: [[Float]]? = nil,
+        origin: [Float]? = nil,
+        axis: [Float]? = nil,
+        normal: [Float]? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.label = label
+        self.sourceIDs = sourceIDs
+        self.length = length
+        self.radius = radius
+        self.area = area
+        self.perimeter = perimeter
+        self.triangleCount = triangleCount
+        self.pointCount = pointCount
+        self.shape = shape
+        self.surfaceType = surfaceType
+        self.points = points
+        self.displayPoints = displayPoints
+        self.sourcePoints = sourcePoints
+        self.sourceTriangleVertices = sourceTriangleVertices
+        self.origin = origin
+        self.axis = axis
+        self.normal = normal
     }
 
+    var simdPoints: [SIMD3<Float>] { Self.simd3Array(points) }
+    var simdDisplayPoints: [SIMD3<Float>] { Self.simd3Array(displayPoints ?? points) }
+    var simdSourcePoints: [SIMD3<Float>] { Self.simd3Array(sourcePoints ?? points) }
+    var simdSourceTriangleVertices: [SIMD3<Float>] { Self.simd3Array(sourceTriangleVertices ?? []) }
 
-    var simdDisplayPoints: [SIMD3<Float>] {
-        let values = displayPoints ?? points
-        return values.compactMap { point in
-            guard point.count >= 3 else { return nil }
-            return SIMD3<Float>(point[0], point[1], point[2])
-        }
+    var geometryKind: MeasurementGeometryKind {
+        if kind == .point { return .point }
+        let value = (kind == .edge ? shape : surfaceType)?.lowercased() ?? ""
+        if value.contains("circle") { return .circle }
+        if value.contains("arc") || value.contains("semicircle") { return .arc }
+        if value.contains("line") { return .line }
+        if value.contains("plane") || value.contains("planar") { return .plane }
+        if value.contains("cylinder") || value.contains("cylindrical") { return .cylinder }
+        return .other
+    }
+
+    var coreGeometry: MeasurementGeometry {
+        MeasurementGeometry(
+            kind: geometryKind,
+            points: simdSourcePoints,
+            triangleVertices: simdSourceTriangleVertices,
+            origin: Self.simd3(origin),
+            axis: Self.simd3(axis),
+            normal: Self.simd3(normal),
+            radius: radius
+        )
+    }
+
+    private static func simd3Array(_ values: [[Float]]) -> [SIMD3<Float>] {
+        values.compactMap(simd3)
+    }
+
+    private static func simd3(_ values: [Float]?) -> SIMD3<Float>? {
+        guard let values, values.count >= 3 else { return nil }
+        return SIMD3<Float>(values[0], values[1], values[2])
     }
 }
 
-struct SelectionMeasurementSummary: Codable, Equatable {
+struct SelectionMeasurementSummary: Codable, Equatable, Sendable {
     static let empty = SelectionMeasurementSummary(
         kind: .empty,
         entityCount: 0,
-        label: "No selection",
-        length: nil,
-        totalLength: nil,
-        area: nil,
-        perimeter: nil,
-        radius: nil,
-        minimumDistance: nil,
-        maximumDistance: nil,
-        centerToCenterDistance: nil,
-        angleDegrees: nil,
-        triangleCount: nil,
-        pointCount: nil,
-        shape: nil,
-        surfaceType: nil,
-        unitMode: nil,
-        distanceDetail: nil
+        label: "No selection"
     )
 
     let kind: SelectionMeasurementKind
@@ -212,31 +266,124 @@ struct SelectionMeasurementSummary: Codable, Equatable {
     let minimumDistance: Float?
     let maximumDistance: Float?
     let centerToCenterDistance: Float?
+    let axisDistance: Float?
+    let radialGap: Float?
     let angleDegrees: Float?
     let triangleCount: Int?
     let pointCount: Int?
     let shape: String?
     let surfaceType: String?
+    let relation: String?
     var unitMode: String?
     let distanceDetail: SelectionMeasurementDistanceDetail?
 
+    init(
+        kind: SelectionMeasurementKind,
+        entityCount: Int,
+        label: String,
+        length: Float? = nil,
+        totalLength: Float? = nil,
+        area: Float? = nil,
+        perimeter: Float? = nil,
+        radius: Float? = nil,
+        minimumDistance: Float? = nil,
+        maximumDistance: Float? = nil,
+        centerToCenterDistance: Float? = nil,
+        axisDistance: Float? = nil,
+        radialGap: Float? = nil,
+        angleDegrees: Float? = nil,
+        triangleCount: Int? = nil,
+        pointCount: Int? = nil,
+        shape: String? = nil,
+        surfaceType: String? = nil,
+        relation: String? = nil,
+        unitMode: String? = nil,
+        distanceDetail: SelectionMeasurementDistanceDetail? = nil
+    ) {
+        self.kind = kind
+        self.entityCount = entityCount
+        self.label = label
+        self.length = length
+        self.totalLength = totalLength
+        self.area = area
+        self.perimeter = perimeter
+        self.radius = radius
+        self.minimumDistance = minimumDistance
+        self.maximumDistance = maximumDistance
+        self.centerToCenterDistance = centerToCenterDistance
+        self.axisDistance = axisDistance
+        self.radialGap = radialGap
+        self.angleDegrees = angleDegrees
+        self.triangleCount = triangleCount
+        self.pointCount = pointCount
+        self.shape = shape
+        self.surfaceType = surfaceType
+        self.relation = relation
+        self.unitMode = unitMode
+        self.distanceDetail = distanceDetail
+    }
+
     func withUnitMode(_ unitMode: MeasurementUnit) -> SelectionMeasurementSummary {
         var copy = self
-        copy.unitMode = unitMode.rawValue
+        copy.unitMode = MeasurementUnit.resolved(from: unitMode.rawValue).rawValue
         return copy
+    }
+
+    func convertedForTesting(
+        unit: MeasurementUnit,
+        millimetersPerSourceUnit: Double
+    ) -> SelectionMeasurementSummary {
+        let resolvedUnit = MeasurementUnit.resolved(from: unit.rawValue)
+        func convertedLength(_ value: Float?) -> Float? {
+            value.map { Float(resolvedUnit.convertLength($0, mmPerModelUnit: millimetersPerSourceUnit)) }
+        }
+        func areaValue(_ value: Float?) -> Float? {
+            value.map { Float(resolvedUnit.convertArea($0, mmPerModelUnit: millimetersPerSourceUnit)) }
+        }
+        return SelectionMeasurementSummary(
+            kind: kind,
+            entityCount: entityCount,
+            label: label,
+            length: convertedLength(length),
+            totalLength: convertedLength(totalLength),
+            area: areaValue(area),
+            perimeter: convertedLength(perimeter),
+            radius: convertedLength(radius),
+            minimumDistance: convertedLength(minimumDistance),
+            maximumDistance: convertedLength(maximumDistance),
+            centerToCenterDistance: convertedLength(centerToCenterDistance),
+            axisDistance: convertedLength(axisDistance),
+            radialGap: convertedLength(radialGap),
+            angleDegrees: angleDegrees,
+            triangleCount: triangleCount,
+            pointCount: pointCount,
+            shape: shape,
+            surfaceType: surfaceType,
+            relation: relation,
+            unitMode: resolvedUnit.rawValue,
+            distanceDetail: distanceDetail?.converted(
+                unit: resolvedUnit,
+                millimetersPerSourceUnit: millimetersPerSourceUnit
+            )
+        )
     }
 }
 
-struct SelectionSurfaceMeasurements {
-    let area: Float
-    let perimeter: Float
-}
+typealias SelectionSurfaceMeasurements = (
+    area: Float,
+    perimeter: Float,
+    sourceTriangleVertices: [SIMD3<Float>]
+)
 
-struct SelectionMeasurementDistanceDetail: Codable, Equatable {
+struct SelectionMeasurementDistanceDetail: Codable, Equatable, Sendable {
     let firstEntityID: String
     let secondEntityID: String
     let firstLabel: String
     let secondLabel: String
+    let firstGeometryKind: String?
+    let secondGeometryKind: String?
+    let relation: String?
+    let angleDegrees: Float?
     let minimumDistance: Float
     let minimumDelta: [Float]
     let minimumFirstPoint: [Float]
@@ -245,29 +392,46 @@ struct SelectionMeasurementDistanceDetail: Codable, Equatable {
     let maximumDelta: [Float]
     let maximumFirstPoint: [Float]
     let maximumSecondPoint: [Float]
+    let centerDistance: Float?
+    let axisDistance: Float?
+    let radialGap: Float?
 
-    var minimumDeltaSIMD: SIMD3<Float>? {
-        Self.simd3(minimumDelta)
-    }
+    var minimumDeltaSIMD: SIMD3<Float>? { Self.simd3(minimumDelta) }
+    var maximumDeltaSIMD: SIMD3<Float>? { Self.simd3(maximumDelta) }
+    var minimumFirstPointSIMD: SIMD3<Float>? { Self.simd3(minimumFirstPoint) }
+    var minimumSecondPointSIMD: SIMD3<Float>? { Self.simd3(minimumSecondPoint) }
+    var maximumFirstPointSIMD: SIMD3<Float>? { Self.simd3(maximumFirstPoint) }
+    var maximumSecondPointSIMD: SIMD3<Float>? { Self.simd3(maximumSecondPoint) }
 
-    var maximumDeltaSIMD: SIMD3<Float>? {
-        Self.simd3(maximumDelta)
-    }
-
-    var minimumFirstPointSIMD: SIMD3<Float>? {
-        Self.simd3(minimumFirstPoint)
-    }
-
-    var minimumSecondPointSIMD: SIMD3<Float>? {
-        Self.simd3(minimumSecondPoint)
-    }
-
-    var maximumFirstPointSIMD: SIMD3<Float>? {
-        Self.simd3(maximumFirstPoint)
-    }
-
-    var maximumSecondPointSIMD: SIMD3<Float>? {
-        Self.simd3(maximumSecondPoint)
+    func converted(
+        unit: MeasurementUnit,
+        millimetersPerSourceUnit: Double
+    ) -> SelectionMeasurementDistanceDetail {
+        func value(_ input: Float) -> Float {
+            Float(unit.convertLength(input, mmPerModelUnit: millimetersPerSourceUnit))
+        }
+        func values(_ input: [Float]) -> [Float] { input.map(value) }
+        return SelectionMeasurementDistanceDetail(
+            firstEntityID: firstEntityID,
+            secondEntityID: secondEntityID,
+            firstLabel: firstLabel,
+            secondLabel: secondLabel,
+            firstGeometryKind: firstGeometryKind,
+            secondGeometryKind: secondGeometryKind,
+            relation: relation,
+            angleDegrees: angleDegrees,
+            minimumDistance: value(minimumDistance),
+            minimumDelta: values(minimumDelta),
+            minimumFirstPoint: values(minimumFirstPoint),
+            minimumSecondPoint: values(minimumSecondPoint),
+            maximumDistance: value(maximumDistance),
+            maximumDelta: values(maximumDelta),
+            maximumFirstPoint: values(maximumFirstPoint),
+            maximumSecondPoint: values(maximumSecondPoint),
+            centerDistance: centerDistance.map(value),
+            axisDistance: axisDistance.map(value),
+            radialGap: radialGap.map(value)
+        )
     }
 
     private static func simd3(_ values: [Float]) -> SIMD3<Float>? {
@@ -277,82 +441,62 @@ struct SelectionMeasurementDistanceDetail: Codable, Equatable {
 }
 
 enum SelectionMeasurementCalculator {
-    static func uniqueEdges(_ entities: [SelectionMeasurementEntity]) -> [SelectionMeasurementEntity] {
+    static func uniqueEntities(
+        _ entities: [SelectionMeasurementEntity]
+    ) -> [SelectionMeasurementEntity] {
         var seen: Set<String> = []
-        var result: [SelectionMeasurementEntity] = []
-        for entity in entities where entity.kind == .edge {
-            if seen.insert(entity.id).inserted {
-                result.append(entity)
-            }
-        }
-        return result
+        return entities.filter { seen.insert($0.id).inserted }
     }
 
-    static func summary(forEdges entities: [SelectionMeasurementEntity]) -> SelectionMeasurementSummary {
-        let edgeEntities = uniqueEdges(entities)
-        guard !edgeEntities.isEmpty else {
-            return .empty
+    static func summary(
+        for entities: [SelectionMeasurementEntity],
+        kind: SelectionMeasurementKind,
+        includeDistanceDetail: Bool = true
+    ) -> SelectionMeasurementSummary {
+        guard !entities.isEmpty else { return .empty }
+        let edges = entities.filter { $0.kind == .edge }
+        let surfaces = entities.filter { $0.kind == .surface }
+        let totalLength = edges.isEmpty ? nil : edges.reduce(Float(0)) {
+            $0 + ($1.length ?? polylineLength($1.simdSourcePoints))
         }
-
-        let totalLength = edgeEntities.reduce(Float(0)) { partial, entity in
-            partial + (entity.length ?? polylineLength(entity.simdPoints))
-        }
-        let pointCount = edgeEntities.reduce(0) { $0 + ($1.pointCount ?? $1.points.count) }
-        let distanceDetail = edgeEntities.count >= 2 ? closestDistanceDetail(edgeEntities) : nil
-        let minimumDistance = distanceDetail?.minimumDistance
-        let maximumDistance = distanceDetail?.maximumDistance
-        let centerDistance = edgeEntities.count >= 2 ? minimumCentroidDistance(edgeEntities.map(\.simdPoints)) : nil
-        let angle = edgeEntities.count == 2 ? angleDegrees(edgeEntities[0].simdPoints, edgeEntities[1].simdPoints) : nil
-
-        if edgeEntities.count == 1, let entity = edgeEntities.first {
-            return SelectionMeasurementSummary(
-                kind: .edge,
-                entityCount: 1,
-                label: entity.label,
-                length: entity.length,
-                totalLength: entity.length,
-                area: nil,
-                perimeter: nil,
-                radius: entity.radius,
-                minimumDistance: nil,
-                maximumDistance: nil,
-                centerToCenterDistance: nil,
-                angleDegrees: nil,
-                triangleCount: nil,
-                pointCount: entity.pointCount,
-                shape: entity.shape,
-                surfaceType: nil,
-                unitMode: nil,
-                distanceDetail: nil
-            )
-        }
+        let totalArea = surfaces.isEmpty ? nil : surfaces.reduce(Float(0)) { $0 + ($1.area ?? 0) }
+        let totalPerimeter = surfaces.isEmpty ? nil : surfaces.reduce(Float(0)) { $0 + ($1.perimeter ?? 0) }
+        let pointCount = edges.isEmpty ? nil : edges.reduce(0) { $0 + ($1.pointCount ?? $1.simdSourcePoints.count) }
+        let triangleCount = surfaces.isEmpty ? nil : surfaces.reduce(0) { $0 + ($1.triangleCount ?? 0) }
+        let detail = includeDistanceDetail && entities.count >= 2
+            ? closestDistanceDetail(entities)
+            : nil
+        let single = entities.count == 1 ? entities[0] : nil
 
         return SelectionMeasurementSummary(
-            kind: .multiEdge,
-            entityCount: edgeEntities.count,
-            label: "\(edgeEntities.count) Edges",
-            length: nil,
+            kind: kind,
+            entityCount: entities.count,
+            label: single?.label ?? "\(entities.count) selected",
+            length: single?.length,
             totalLength: totalLength,
-            area: nil,
-            perimeter: nil,
-            radius: nil,
-            minimumDistance: minimumDistance,
-            maximumDistance: maximumDistance,
-            centerToCenterDistance: centerDistance,
-            angleDegrees: angle,
-            triangleCount: nil,
-            pointCount: pointCount,
-            shape: nil,
-            surfaceType: nil,
-            unitMode: nil,
-            distanceDetail: distanceDetail
+            area: single?.area ?? totalArea,
+            perimeter: single?.perimeter ?? totalPerimeter,
+            radius: single?.radius,
+            minimumDistance: detail?.minimumDistance,
+            maximumDistance: detail?.maximumDistance,
+            centerToCenterDistance: detail?.centerDistance,
+            axisDistance: detail?.axisDistance,
+            radialGap: detail?.radialGap,
+            angleDegrees: detail?.angleDegrees,
+            triangleCount: single?.triangleCount ?? triangleCount,
+            pointCount: single?.pointCount ?? pointCount,
+            shape: single?.shape,
+            surfaceType: single?.surfaceType,
+            relation: entities.count == 2 ? detail?.relation : nil,
+            distanceDetail: detail
         )
     }
 
     static func surfaceMeasurements(
         triangleIndices: [Int],
         selectionModel: SelectionModel,
-        node: SCNNode
+        node: SCNNode,
+        scene: SCNScene?
     ) -> SelectionSurfaceMeasurements {
         var remappedVertices: [SIMD3<Float>] = []
         var sourceToRemapped: [Int: Int] = [:]
@@ -366,10 +510,11 @@ enum SelectionMeasurementCalculator {
                     mapped.append(Int32(existing))
                     continue
                 }
-                guard let sourcePoint = worldVertex(
+                guard let sourcePoint = sourceVertex(
                     sourceIndex,
                     selectionModel: selectionModel,
-                    node: node
+                    node: node,
+                    scene: scene
                 ) else {
                     mapped.removeAll()
                     break
@@ -389,251 +534,89 @@ enum SelectionMeasurementCalculator {
             vertices: remappedVertices,
             triangleIndices: remappedTriangles
         )
-        let measurement = MeasurementEngine.surface(
-            mesh: mesh,
-            triangles: mesh.triangles.map(\.id)
+        let measurement = MeasurementEngine.surface(mesh: mesh, triangles: mesh.triangles.map(\.id))
+        let triangleVertices = remappedTriangles.flatMap { triangle in
+            [
+                remappedVertices[Int(triangle.x)],
+                remappedVertices[Int(triangle.y)],
+                remappedVertices[Int(triangle.z)],
+            ]
+        }
+        return SelectionSurfaceMeasurements(
+            area: measurement.area,
+            perimeter: measurement.perimeter,
+            sourceTriangleVertices: triangleVertices
         )
-        return SelectionSurfaceMeasurements(area: measurement.area, perimeter: measurement.perimeter)
     }
 
     static func polylineLength(_ points: [SIMD3<Float>]) -> Float {
         MeasurementEngine.edgeLength(points: points)
     }
 
-    static func minimumDistance(between polylines: [[SIMD3<Float>]]) -> Float? {
-        minimumDistanceReport(between: polylines)?.distance
-    }
+    static func closestDistanceDetail(
+        _ entities: [SelectionMeasurementEntity]
+    ) -> SelectionMeasurementDistanceDetail? {
+        var selected: (
+            first: SelectionMeasurementEntity,
+            second: SelectionMeasurementEntity,
+            result: MeasurementPairResult
+        )?
 
-    static func minimumDistanceReport(between polylines: [[SIMD3<Float>]]) -> (distance: Float, firstPoint: SIMD3<Float>, secondPoint: SIMD3<Float>)? {
-        var best: (distance: Float, firstPoint: SIMD3<Float>, secondPoint: SIMD3<Float>)?
-        for firstIndex in polylines.indices {
-            let firstSegments = segments(in: polylines[firstIndex])
-            guard !firstSegments.isEmpty else { continue }
-            for secondIndex in polylines.indices where secondIndex > firstIndex {
-                let secondSegments = segments(in: polylines[secondIndex])
-                guard !secondSegments.isEmpty else { continue }
-                for first in firstSegments {
-                    for second in secondSegments {
-                        let candidate = segmentSegmentDistanceReport(first.0, first.1, second.0, second.1)
-                        if best == nil || candidate.distance < best!.distance {
-                            best = candidate
-                        }
-                    }
+        for firstIndex in entities.indices {
+            for secondIndex in entities.indices where secondIndex > firstIndex {
+                let result = MeasurementEngine.compare(
+                    entities[firstIndex].coreGeometry,
+                    entities[secondIndex].coreGeometry
+                )
+                guard result.minimum != nil else { continue }
+                if selected == nil || result.minimum!.distance < selected!.result.minimum!.distance {
+                    selected = (entities[firstIndex], entities[secondIndex], result)
                 }
             }
         }
 
-        return best
-    }
-
-    static func closestDistanceDetail(_ entities: [SelectionMeasurementEntity]) -> SelectionMeasurementDistanceDetail? {
-        let edgeEntities = uniqueEdges(entities)
-        var best: (
-            distance: Float,
-            first: SelectionMeasurementEntity,
-            second: SelectionMeasurementEntity,
-            firstPoint: SIMD3<Float>,
-            secondPoint: SIMD3<Float>
-        )?
-        var farthest: (
-            distance: Float,
-            first: SelectionMeasurementEntity,
-            second: SelectionMeasurementEntity,
-            firstPoint: SIMD3<Float>,
-            secondPoint: SIMD3<Float>
-        )?
-
-        for firstIndex in edgeEntities.indices {
-            let first = edgeEntities[firstIndex]
-            let firstSegments = segments(in: first.simdPoints)
-            guard !firstSegments.isEmpty else { continue }
-
-            for secondIndex in edgeEntities.indices where secondIndex > firstIndex {
-                let second = edgeEntities[secondIndex]
-                let secondSegments = segments(in: second.simdPoints)
-                guard !secondSegments.isEmpty else { continue }
-
-                for firstSegment in firstSegments {
-                    for secondSegment in secondSegments {
-                        let nearest = segmentSegmentDistanceReport(
-                            firstSegment.0,
-                            firstSegment.1,
-                            secondSegment.0,
-                            secondSegment.1
-                        )
-                        if best == nil || nearest.distance < best!.distance {
-                            best = (nearest.distance, first, second, nearest.firstPoint, nearest.secondPoint)
-                        }
-
-                        let endpoints = [
-                            (firstSegment.0, secondSegment.0),
-                            (firstSegment.0, secondSegment.1),
-                            (firstSegment.1, secondSegment.0),
-                            (firstSegment.1, secondSegment.1),
-                        ]
-                        for endpointPair in endpoints {
-                            let distance = simd_distance(endpointPair.0, endpointPair.1)
-                            if farthest == nil || distance > farthest!.distance {
-                                farthest = (distance, first, second, endpointPair.0, endpointPair.1)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        guard let best else {
-            return nil
-        }
-        let farthestPair = farthest ?? best
-        let minimumDelta = best.secondPoint - best.firstPoint
-        let maximumDelta = farthestPair.secondPoint - farthestPair.firstPoint
-
+        guard let selected, let minimum = selected.result.minimum else { return nil }
+        let maximum = selected.result.maximum ?? minimum
         return SelectionMeasurementDistanceDetail(
-            firstEntityID: best.first.id,
-            secondEntityID: best.second.id,
-            firstLabel: best.first.label,
-            secondLabel: best.second.label,
-            minimumDistance: best.distance,
-            minimumDelta: array(minimumDelta),
-            minimumFirstPoint: array(best.firstPoint),
-            minimumSecondPoint: array(best.secondPoint),
-            maximumDistance: farthestPair.distance,
-            maximumDelta: array(maximumDelta),
-            maximumFirstPoint: array(farthestPair.firstPoint),
-            maximumSecondPoint: array(farthestPair.secondPoint)
+            firstEntityID: selected.first.id,
+            secondEntityID: selected.second.id,
+            firstLabel: selected.first.label,
+            secondLabel: selected.second.label,
+            firstGeometryKind: selected.first.geometryKind.rawValue,
+            secondGeometryKind: selected.second.geometryKind.rawValue,
+            relation: selected.result.relation.rawValue,
+            angleDegrees: selected.result.angleDegrees,
+            minimumDistance: minimum.distance,
+            minimumDelta: array(minimum.delta),
+            minimumFirstPoint: array(minimum.first),
+            minimumSecondPoint: array(minimum.second),
+            maximumDistance: maximum.distance,
+            maximumDelta: array(maximum.delta),
+            maximumFirstPoint: array(maximum.first),
+            maximumSecondPoint: array(maximum.second),
+            centerDistance: selected.result.centerDistance,
+            axisDistance: selected.result.axisDistance,
+            radialGap: selected.result.radialGap
         )
     }
 
-    static func minimumCentroidDistance(_ polylines: [[SIMD3<Float>]]) -> Float? {
-        let centers = polylines.compactMap(centroid)
-        guard centers.count >= 2 else {
-            return nil
-        }
-
-        var best = Float.greatestFiniteMagnitude
-        for first in centers.indices {
-            for second in centers.indices where second > first {
-                best = min(best, simd_distance(centers[first], centers[second]))
-            }
-        }
-        return best.isFinite ? best : nil
-    }
-
-    static func angleDegrees(_ first: [SIMD3<Float>], _ second: [SIMD3<Float>]) -> Float? {
-        guard let firstDirection = principalDirection(first),
-              let secondDirection = principalDirection(second)
-        else {
-            return nil
-        }
-        let dot = min(max(abs(simd_dot(firstDirection, secondDirection)), -1), 1)
-        return acosf(dot) * 180 / .pi
-    }
-
-    private static func worldVertex(
+    private static func sourceVertex(
         _ index: Int,
         selectionModel: SelectionModel,
-        node: SCNNode
+        node: SCNNode,
+        scene: SCNScene?
     ) -> SIMD3<Float>? {
-        guard index >= 0, index < selectionModel.vertices.count else {
-            return nil
-        }
+        guard selectionModel.vertices.indices.contains(index) else { return nil }
         let vertex = selectionModel.vertices[index]
-        let converted = node.convertPosition(SCNVector3(CGFloat(vertex.x), CGFloat(vertex.y), CGFloat(vertex.z)), to: nil)
-        return SIMD3<Float>(Float(converted.x), Float(converted.y), Float(converted.z))
-    }
-
-    private static func segments(in points: [SIMD3<Float>]) -> [(SIMD3<Float>, SIMD3<Float>)] {
-        zip(points, points.dropFirst()).compactMap { pair in
-            simd_distance(pair.0, pair.1) > 0.000001 ? pair : nil
-        }
+        let world = node.convertPosition(
+            SCNVector3(CGFloat(vertex.x), CGFloat(vertex.y), CGFloat(vertex.z)),
+            to: nil
+        )
+        let scenePoint = SIMD3<Float>(Float(world.x), Float(world.y), Float(world.z))
+        return scene.map { SceneComposer.sourcePoint(fromScenePoint: scenePoint, in: $0) } ?? scenePoint
     }
 
     private static func array(_ point: SIMD3<Float>) -> [Float] {
         [point.x, point.y, point.z]
-    }
-
-    private static func centroid(_ points: [SIMD3<Float>]) -> SIMD3<Float>? {
-        guard !points.isEmpty else {
-            return nil
-        }
-        return points.reduce(SIMD3<Float>(repeating: 0), +) / Float(points.count)
-    }
-
-    private static func principalDirection(_ points: [SIMD3<Float>]) -> SIMD3<Float>? {
-        let validSegments = segments(in: points)
-        guard let longest = validSegments.max(by: {
-            simd_length_squared($0.1 - $0.0) < simd_length_squared($1.1 - $1.0)
-        }) else {
-            return nil
-        }
-        let vector = longest.1 - longest.0
-        let length = simd_length(vector)
-        guard length.isFinite, length > 0.000001 else {
-            return nil
-        }
-        return vector / length
-    }
-
-    private static func segmentSegmentDistance(
-        _ p1: SIMD3<Float>,
-        _ q1: SIMD3<Float>,
-        _ p2: SIMD3<Float>,
-        _ q2: SIMD3<Float>
-    ) -> Float {
-        segmentSegmentDistanceReport(p1, q1, p2, q2).distance
-    }
-
-    private static func segmentSegmentDistanceReport(
-        _ p1: SIMD3<Float>,
-        _ q1: SIMD3<Float>,
-        _ p2: SIMD3<Float>,
-        _ q2: SIMD3<Float>
-    ) -> (distance: Float, firstPoint: SIMD3<Float>, secondPoint: SIMD3<Float>) {
-        let d1 = q1 - p1
-        let d2 = q2 - p2
-        let r = p1 - p2
-        let a = simd_dot(d1, d1)
-        let e = simd_dot(d2, d2)
-        let f = simd_dot(d2, r)
-        let epsilon: Float = 0.000001
-
-        if a <= epsilon, e <= epsilon {
-            return (simd_distance(p1, p2), p1, p2)
-        }
-        if a <= epsilon {
-            let t = min(max(f / e, 0), 1)
-            let closestSecond = p2 + d2 * t
-            return (simd_distance(p1, closestSecond), p1, closestSecond)
-        }
-        if e <= epsilon {
-            let s = min(max(-simd_dot(d1, r) / a, 0), 1)
-            let closestFirst = p1 + d1 * s
-            return (simd_distance(closestFirst, p2), closestFirst, p2)
-        }
-
-        let b = simd_dot(d1, d2)
-        let c = simd_dot(d1, r)
-        let denominator = a * e - b * b
-        var s: Float = 0
-        if denominator != 0 {
-            s = min(max((b * f - c * e) / denominator, 0), 1)
-        }
-
-        let tNominal = b * s + f
-        let t: Float
-        if tNominal < 0 {
-            t = 0
-            s = min(max(-c / a, 0), 1)
-        } else if tNominal > e {
-            t = 1
-            s = min(max((b - c) / a, 0), 1)
-        } else {
-            t = tNominal / e
-        }
-
-        let closestFirst = p1 + d1 * s
-        let closestSecond = p2 + d2 * t
-        return (simd_distance(closestFirst, closestSecond), closestFirst, closestSecond)
     }
 }

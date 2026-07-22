@@ -16,6 +16,8 @@ extension DebugSelectableSCNView {
             return node
         }()
         let overlay = SCNNode(geometry: geometry)
+        overlay.name = "selection-surface"
+        overlay.renderingOrder = 40
         overlayRoot.addChildNode(overlay)
         overlay.simdWorldTransform = sourceNode.simdWorldTransform
     }
@@ -217,11 +219,12 @@ extension DebugSelectableSCNView {
     }
 
     func updateScreenStableHighlights() {
-        guard !screenStableHighlightNodes.isEmpty else {
+        let highlights = screenStableHighlightNodes + hoverScreenStableHighlightNodes
+        guard !highlights.isEmpty else {
             return
         }
 
-        for highlight in screenStableHighlightNodes {
+        for highlight in highlights {
             let radius = worldRadius(forPixelRadius: highlight.pixelRadius, at: highlight.anchor)
             switch highlight.scaleMode {
             case .radial:
@@ -271,7 +274,7 @@ extension DebugSelectableSCNView {
     func isSelectionOverlay(_ node: SCNNode) -> Bool {
         var current: SCNNode? = node
         while let node = current {
-            if node.name == selectionRootName {
+            if node.name == selectionRootName || node.name == hoverRootName {
                 return true
             }
             current = node.parent

@@ -456,3 +456,107 @@ example usage: Shift-select two edges in the viewer, open Distance Details, and 
 content change: fitted single-click edge display and measurement now use selected edge endpoints.
 example usage: when a "Single" measurement shows combined edge chains, run the no-overmerge plan and verify length stays near one edge with `pointCount: 2`.
 ```
+
+## 2026-07-22 Semantic Selection Update
+
+### Problem context
+- Smooth triangle flooding could select an entire mesh, exact STEP faces/edges lost source identity, and repeated SceneKit point projection pushed resolver latency above the 16 ms target.
+
+### What changed
+- STEP topology now carries stable face/edge IDs and plane/cylinder/curve descriptors from Foxtrot through FFI and `TopologyHints`; exact topology wins over mesh inference.
+- Mesh inference exposes only confident planes/cylinders and finite line/arc/circle edges; unsupported sphere, cone, disconnected, or ambiguous support returns a typed rejection.
+- Exact-edge ranking uses one camera/node transform snapshot with perspective-correct depth interpolation instead of repeated `SCNView.projectPoint` calls.
+- Use `QLS_DISABLE_SELECTION_DEBUG_SCREENSHOTS=1 QLS_DISABLE_TESTING_SNAPSHOTS=1` only for resolver timing runs; normal debug sessions still capture before/after images.
+
+### Why it helped
+- A normal click resolves one semantic entity, internal cylinder clicks stay on STEP face `#129`, rim clicks stay on edge `#63`, and edge `#62` remains selectable without relaxing the six-point aperture.
+- The cube-hole exact flow records resolver p95 below 16 ms after its immutable selection index is ready.
+
+### Validation
+- `cargo test --manifest-path ffi/Cargo.toml`
+- `swift test --package-path Packages/QuickLookCore`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/selection-semantic-step.json testing/results/selection-semantic-step.json`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/selection-semantic-mesh-formats.json testing/results/selection-semantic-mesh-formats.json`
+- Resolver timing: add `QLS_DISABLE_SELECTION_DEBUG_SCREENSHOTS=1 QLS_DISABLE_TESTING_SNAPSHOTS=1` and inspect `resolver.elapsedMs` in each event.
+
+```text
+content change: documented exact STEP semantic identity, conservative mesh inference, perspective-correct edge projection, and isolated resolver timing.
+example usage: when a cylinder click expands to the mesh or a rim click selects a face, replay selection-semantic-step.json and inspect sourceEntityID, primitive type, rejection code, and resolver elapsed time.
+```
+
+## 2026-07-22 Surface Overlay Depth-Fighting Update
+
+### Problem context
+- Correct STEP face selections rendered as patchy/checkerboard orange because a full copied mesh was drawn coplanar with the source geometry.
+- A constant emissive overlay then removed all curvature cues, making the selected internal cylinder look like a flat cap even after depth fighting was removed.
+
+### What changed
+- Surface highlights now contain selected triangles only, use a scale-aware local-normal offset, read depth, and do not write depth. The automated overlay path preserves the original node geometry.
+- Overlay normals are area-weighted within the selected semantic face, and the material uses the same Blinn lighting family as the source mesh so curved selections retain visible shading.
+
+### Why it helped
+- Removes coplanar depth fighting while keeping hidden selected triangles occluded by front geometry.
+- Keeps cylinders visually distinct from planar caps without weakening the orange selection color.
+
+### Validation
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/selection-semantic-step.json /tmp/selection-semantic-step-overlay.json`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/selection-cylinder-closeup-step.json /tmp/selection-cylinder-closeup-step.json`
+- `swift testing/surface-selection/scripts/check_surface_highlight_shading.swift <closeup-screenshot.png> 0.015 0.025 /tmp/cylinder-highlight-shading.json`
+
+```text
+content change: documented selected-triangle-only depth overlays, selected-face smooth normals, Blinn curvature shading, and the close-up image-quality gate.
+example usage: when face #129 resolves correctly but looks striped or flat, run the close-up plan and require selected-triangle-lit-depth-tested-overlay plus a luminance range of at least 0.025.
+```
+
+## 2026-07-22 Contextual Measurement Update
+
+### Problem context
+- Measurement values came from normalized scene coordinates, surface clicks replaced accumulated entities, and a removed surface overlay could remain in SceneKit's hit cache for one frame so the next Shift-click returned `none`.
+
+### What changed
+- Measurements now use canonical source coordinates and imported STEP units, expose only `mm` and `in`, and classify exact two-entity relationships such as parallel, perpendicular, coincident, concentric, and coaxial.
+- Shift/Cmd accumulation now supports edges and surfaces through one reducer, with simultaneous finite overlays and per-row removal.
+- Surface-pair distance analysis is bounded and runs off the main thread. Overlay roots are hidden before removal, and the resolver selects the nearest non-overlay result from one all-results SceneKit hit-test call.
+- Measurement entities reuse `QuickLookCore.SelectionKind`; keep relationship-result construction inside Core and remove app-side compatibility helpers once no call sites remain.
+- Added `testing/plans/measurement-relations-cube-hole.json` for single, parallel, perpendicular, mixed, multi-surface, and unit-conversion coverage.
+
+### Why it helped
+- STEP dimensions remain correct after scene normalization, relationship rows match the actual selected primitive pair, and a highlighted surface no longer blocks the next model click.
+
+### Validation
+- `swift test --package-path Packages/QuickLookCore`
+- `swift testing/selection-engine/scripts/check_selection_measurements.swift`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/measurement-relations-cube-hole.json testing/results/measurement-relations-cube-hole.json`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/measurement-viewer-cube-hole.json testing/results/measurement-viewer-cube-hole.json`
+- If `perpendicular-left-edge` resolves face `#130`, inspect the recorded point before changing measurement code: the stale `x: 0.274` capture currently lands 2.24 mm inside the face with zero edge candidates.
+
+```text
+content change: documented source-space units, contextual relationships, mixed selection, canonical entity kinds, asynchronous surface analysis, and stale-overlay hit filtering.
+example usage: when refactoring measurement adapters, remove only helpers with no callers, then run the relationship golden to preserve sourceUnit, mixed selection, and pair metrics.
+```
+
+## 2026-07-22 Update
+
+### Problem context
+- CAD hover needed distinct point, edge, and face preselection without mutating the committed overlay or measurement state; stale frame callbacks and hover geometry could also overwrite a valid preview with `none`.
+
+### What changed
+- Added exact endpoint/inferred-junction vertices, fitted circle centers, fixed screen-space acquire/release apertures, incident-parent visibility filtering, cached hover-to-click commits, camera refresh, and separate transient SceneKit overlays.
+- Added `hoverAt`, `clearHover`, hover expectations, resolver-pass counters, background test launch mode, and dedicated behavior/performance plans. Test runners now clean up their app process and automated plans do not activate the window.
+
+### Why it helped
+- Hover now resolves in CAD priority order (`point -> edge -> surface`), keeps measurements untouched, refreshes under stationary zoom/orbit, and cannot be stolen by hidden or transient overlay geometry.
+- The cube-hole hover performance plan records p95 below 16 ms and verifies zero idle resolver passes after mouse exit.
+
+### Validation
+- `swift test --package-path Packages/QuickLookCore`
+- `QLS_DISABLE_SELECTION_DEBUG_SCREENSHOTS=1 testing/scripts/run-testing.sh testing/plans/hover-preselection-cube-hole.json testing/results/hover-preselection-final-visual.json`
+- `QLS_DISABLE_TESTING_SNAPSHOTS=1 QLS_DISABLE_SELECTION_DEBUG_SCREENSHOTS=1 testing/scripts/run-testing.sh testing/plans/hover-preselection-performance.json testing/results/hover-preselection-performance.json`
+- `testing/surface-selection/scripts/run_surface_layer_test.sh`
+- `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`
+
+```text
+content change: documented CAD hover entity priority, visibility and hysteresis rules, cached click commits, separate overlays, camera refresh, and non-activating test coverage.
+example usage: when a hover jumps from a visible vertex to a hidden edge or becomes none after drawing its preview, run the cube-hole hover golden and inspect hoverSummary, hoverResolverPassDelta, and the fixed-cursor zoom actions.
+```

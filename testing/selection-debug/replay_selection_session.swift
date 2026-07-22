@@ -30,6 +30,12 @@ struct SelectionDebugInput: Codable {
 struct SelectionDebugResolver: Codable {
     let finalKind: String
     let selectedEntityID: String?
+    let source: String?
+    let sourceEntityID: String?
+    let surfaceType: String?
+    let curveType: String?
+    let projectedEdgeDistancePoints: Float?
+    let rejectionCode: String?
     let selectedSurfaceTriangleCount: Int
     let edgeCandidateCount: Int
     let rejectedAlternatives: [SelectionDebugRejectedAlternative]
@@ -41,6 +47,12 @@ struct SelectionDebugRejectedAlternative: Codable {
 
 struct SelectionDebugExpectation: Codable {
     let kind: String?
+    let source: String?
+    let sourceEntityID: String?
+    let surfaceType: String?
+    let curveType: String?
+    let reasonCode: String?
+    let maxProjectedEdgeDistancePoints: Float?
     let surfaceTriangleCount: Int?
     let minSurfaceTriangleCount: Int?
     let maxSurfaceTriangleCount: Int?
@@ -50,6 +62,12 @@ struct SelectionDebugExpectation: Codable {
     static func baseline(from event: SelectionDebugEvent) -> SelectionDebugExpectation {
         SelectionDebugExpectation(
             kind: event.expectedKind ?? event.resolver.finalKind,
+            source: event.resolver.source,
+            sourceEntityID: event.resolver.sourceEntityID,
+            surfaceType: event.resolver.surfaceType,
+            curveType: event.resolver.curveType,
+            reasonCode: event.resolver.rejectionCode,
+            maxProjectedEdgeDistancePoints: event.resolver.projectedEdgeDistancePoints.map { max(6, $0 + 0.25) },
             surfaceTriangleCount: event.resolver.finalKind == "surface" ? event.resolver.selectedSurfaceTriangleCount : nil,
             minSurfaceTriangleCount: nil,
             maxSurfaceTriangleCount: nil,
@@ -206,12 +224,42 @@ func compare(
     actualSurfaceTriangleCount: Int,
     actualRejectedCount: Int,
     actualEntity: String?,
+    actualSource: String?,
+    actualSourceEntityID: String?,
+    actualSurfaceType: String?,
+    actualCurveType: String?,
+    actualReasonCode: String?,
+    actualProjectedEdgeDistancePoints: Float?,
     expectation: SelectionDebugExpectation
 ) -> ReplayEventReport {
     var failures: [String] = []
 
     if let kind = expectation.kind, actualKind != kind {
         failures.append("kind expected \(kind), got \(actualKind)")
+    }
+    if let source = expectation.source, actualSource != source {
+        failures.append("source expected \(source), got \(actualSource ?? "nil")")
+    }
+    if let sourceEntityID = expectation.sourceEntityID, actualSourceEntityID != sourceEntityID {
+        failures.append("sourceEntityID expected \(sourceEntityID), got \(actualSourceEntityID ?? "nil")")
+    }
+    if let surfaceType = expectation.surfaceType, actualSurfaceType != surfaceType {
+        failures.append("surfaceType expected \(surfaceType), got \(actualSurfaceType ?? "nil")")
+    }
+    if let curveType = expectation.curveType, actualCurveType != curveType {
+        failures.append("curveType expected \(curveType), got \(actualCurveType ?? "nil")")
+    }
+    if let reasonCode = expectation.reasonCode, actualReasonCode != reasonCode {
+        failures.append("reasonCode expected \(reasonCode), got \(actualReasonCode ?? "nil")")
+    }
+    if let maximumDistance = expectation.maxProjectedEdgeDistancePoints {
+        if let actualProjectedEdgeDistancePoints {
+            if actualProjectedEdgeDistancePoints > maximumDistance {
+                failures.append("projected edge distance expected <= \(maximumDistance), got \(actualProjectedEdgeDistancePoints)")
+            }
+        } else {
+            failures.append("projected edge distance missing")
+        }
     }
     if let surfaceTriangleCount = expectation.surfaceTriangleCount,
        actualSurfaceTriangleCount != surfaceTriangleCount {
@@ -303,6 +351,12 @@ if !noRun,
             actualSurfaceTriangleCount: summary.surfaceTriangleCount,
             actualRejectedCount: replayEvent?.resolver.rejectedAlternatives.count ?? 0,
             actualEntity: replayEvent?.resolver.selectedEntityID,
+            actualSource: replayEvent?.resolver.source,
+            actualSourceEntityID: replayEvent?.resolver.sourceEntityID,
+            actualSurfaceType: replayEvent?.resolver.surfaceType,
+            actualCurveType: replayEvent?.resolver.curveType,
+            actualReasonCode: replayEvent?.resolver.rejectionCode,
+            actualProjectedEdgeDistancePoints: replayEvent?.resolver.projectedEdgeDistancePoints,
             expectation: event.expectation ?? .baseline(from: event)
         )
     }
@@ -332,6 +386,12 @@ if !noRun,
             actualSurfaceTriangleCount: event.resolver.selectedSurfaceTriangleCount,
             actualRejectedCount: event.resolver.rejectedAlternatives.count,
             actualEntity: event.resolver.selectedEntityID,
+            actualSource: event.resolver.source,
+            actualSourceEntityID: event.resolver.sourceEntityID,
+            actualSurfaceType: event.resolver.surfaceType,
+            actualCurveType: event.resolver.curveType,
+            actualReasonCode: event.resolver.rejectionCode,
+            actualProjectedEdgeDistancePoints: event.resolver.projectedEdgeDistancePoints,
             expectation: event.expectation ?? .baseline(from: event)
         )
     }

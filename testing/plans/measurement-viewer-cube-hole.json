@@ -4,99 +4,109 @@
       "name": "measurement-viewer-cube-hole",
       "file": "testing/input/cube_hole.step",
       "actions": [
+        { "kind": "wait", "label": "selection-index-ready", "durationMs": 120 },
+        { "kind": "resetMeasurementScale", "label": "use-imported-step-units" },
         {
           "kind": "setMeasurementUnit",
-          "unit": "model",
-          "mmPerModelUnit": 1.0,
-          "durationMs": 40,
-          "measurementExpect": {
-            "kind": "empty",
-            "entityCount": 0,
-            "unitMode": "model"
-          }
+          "label": "millimeters",
+          "unit": "mm",
+          "measurementExpect": { "kind": "empty", "entityCount": 0, "unitMode": "mm" }
+        },
+        {
+          "kind": "setCamera",
+          "label": "fixed-front-camera",
+          "orientationDegrees": [0, 0, 0],
+          "cameraPosition": [0, 0, 200],
+          "fieldOfView": 45,
+          "durationMs": 40
         },
         {
           "kind": "selectAt",
+          "label": "single-top-edge",
           "x": 0.5,
-          "y": 0.5,
+          "y": 0.668,
           "coordinateSpace": "normalizedViewport",
-          "expect": {
-            "kind": "edge"
-          },
+          "expect": { "kind": "edge" },
           "measurementExpect": {
             "kind": "edge",
             "entityCount": 1,
-            "minTotalLength": 99.0,
-            "maxTotalLength": 101.0,
-            "unitMode": "model"
+            "minTotalLength": 50.7,
+            "maxTotalLength": 50.9,
+            "unitMode": "mm"
           },
-          "durationMs": 100
+          "durationMs": 60
         },
         {
           "kind": "selectAt",
-          "x": 0.55,
-          "y": 0.45,
+          "label": "add-parallel-bottom-edge",
+          "x": 0.5,
+          "y": 0.332,
           "coordinateSpace": "normalizedViewport",
           "modifiers": ["shift"],
-          "expect": {
-            "kind": "edge"
-          },
+          "expect": { "kind": "edge" },
           "measurementExpect": {
             "kind": "multiEdge",
             "entityCount": 2,
-            "minTotalLength": 151.0,
-            "maxTotalLength": 153.0,
-            "unitMode": "model"
+            "relation": "parallel",
+            "minTotalLength": 101.5,
+            "maxTotalLength": 101.7,
+            "unitMode": "mm"
           },
-          "durationMs": 100
+          "durationMs": 60
         },
         {
           "kind": "setMeasurementUnit",
-          "unit": "mm",
-          "mmPerModelUnit": 2.0,
-          "durationMs": 40,
+          "label": "inches",
+          "unit": "in",
           "measurementExpect": {
             "kind": "multiEdge",
             "entityCount": 2,
-            "minTotalLength": 151.0,
-            "maxTotalLength": 153.0,
+            "relation": "parallel",
+            "minTotalLength": 3.99,
+            "maxTotalLength": 4.01,
+            "unitMode": "in"
+          }
+        },
+        {
+          "kind": "setMeasurementUnit",
+          "label": "restore-millimeters",
+          "unit": "mm",
+          "measurementExpect": {
+            "kind": "multiEdge",
+            "entityCount": 2,
+            "relation": "parallel",
             "unitMode": "mm"
           }
         },
         {
           "kind": "selectAt",
-          "x": 0.43,
-          "y": 0.5,
+          "label": "replace-with-front-surface",
+          "x": 0.6,
+          "y": 0.58,
           "coordinateSpace": "normalizedViewport",
           "expect": {
             "kind": "surface",
-            "minSurfaceTriangleCount": 120,
-            "maxSurfaceTriangleCount": 130
+            "surfaceTriangleCount": 67
           },
           "measurementExpect": {
             "kind": "surface",
             "entityCount": 1,
-            "minArea": 3900.0,
-            "maxArea": 4000.0,
-            "minPerimeter": 150.0,
-            "maxPerimeter": 165.0,
+            "minArea": 1163.7,
+            "maxArea": 1164.0,
+            "minPerimeter": 192.1,
+            "maxPerimeter": 192.5,
             "unitMode": "mm"
           },
-          "durationMs": 100
+          "durationMs": 60
         },
         {
           "kind": "selectAt",
+          "label": "blank-clears",
           "x": 0.05,
           "y": 0.05,
           "coordinateSpace": "normalizedViewport",
-          "expect": {
-            "kind": "none"
-          },
-          "measurementExpect": {
-            "kind": "empty",
-            "entityCount": 0,
-            "unitMode": "mm"
-          },
+          "expect": { "kind": "none" },
+          "measurementExpect": { "kind": "empty", "entityCount": 0, "unitMode": "mm" },
           "durationMs": 60
         }
       ]

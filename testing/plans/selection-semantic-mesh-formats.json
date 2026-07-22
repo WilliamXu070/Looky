@@ -1,0 +1,54 @@
+{
+  "scenarios": [
+    {
+      "name": "semantic-mesh-glb",
+      "file": "testing/input/cube_hole_from_step.glb",
+      "actions": [
+        {"kind":"wait","label":"selection-index-ready","durationMs":400},
+        {"kind":"setCamera","label":"fixed-isometric-camera","orientationDegrees":[-35.26440328855924,44.9999978371445,-0.000013215309125452213],"cameraPosition":[147.83978271484375,147.83978271484375,147.83978271484375],"fieldOfView":45,"durationMs":40},
+        {"kind":"selectAt","label":"inferred-top-plane","x":0.5,"y":0.62,"coordinateSpace":"normalizedViewport","expect":{"kind":"surface","source":"inferred-geometry","surfaceType":"plane","surfaceTriangleCount":2},"durationMs":80},
+        {"kind":"selectAt","label":"inferred-internal-cylinder","x":0.44,"y":0.45,"coordinateSpace":"normalizedViewport","expect":{"kind":"surface","source":"inferred-geometry","surfaceType":"cylinder","surfaceTriangleCount":126},"durationMs":80}
+      ]
+    },
+    {
+      "name": "semantic-mesh-gltf",
+      "file": "testing/input/cube_hole_from_step.gltf",
+      "actions": [
+        {"kind":"wait","label":"selection-index-ready","durationMs":400},
+        {"kind":"setCamera","label":"fixed-isometric-camera","orientationDegrees":[-35.26440328855924,44.9999978371445,-0.000013215309125452213],"cameraPosition":[147.83978271484375,147.83978271484375,147.83978271484375],"fieldOfView":45,"durationMs":40},
+        {"kind":"selectAt","label":"inferred-top-plane","x":0.5,"y":0.62,"coordinateSpace":"normalizedViewport","expect":{"kind":"surface","source":"inferred-geometry","surfaceType":"plane","surfaceTriangleCount":2},"durationMs":80},
+        {"kind":"selectAt","label":"inferred-internal-cylinder","x":0.44,"y":0.45,"coordinateSpace":"normalizedViewport","expect":{"kind":"surface","source":"inferred-geometry","surfaceType":"cylinder","surfaceTriangleCount":126},"durationMs":80}
+      ]
+    },
+    {
+      "name": "semantic-mesh-obj",
+      "file": "testing/input/cube_hole_from_step.obj",
+      "actions": [
+        {"kind":"wait","label":"selection-index-ready","durationMs":400},
+        {"kind":"setCamera","label":"fixed-isometric-camera","orientationDegrees":[-35.26440328855924,44.9999978371445,-0.000013215309125452213],"cameraPosition":[147.83978271484375,147.83978271484375,147.83978271484375],"fieldOfView":45,"durationMs":40},
+        {"kind":"selectAt","label":"inferred-top-plane","x":0.5,"y":0.62,"coordinateSpace":"normalizedViewport","expect":{"kind":"surface","source":"inferred-geometry","surfaceType":"plane","surfaceTriangleCount":2},"durationMs":80},
+        {"kind":"selectAt","label":"inferred-internal-cylinder","x":0.44,"y":0.45,"coordinateSpace":"normalizedViewport","expect":{"kind":"surface","source":"inferred-geometry","surfaceType":"cylinder","surfaceTriangleCount":126},"durationMs":80}
+      ]
+    },
+    {
+      "name": "semantic-mesh-stl",
+      "file": "testing/input/cube_hole_from_step.stl",
+      "actions": [
+        {"kind":"wait","label":"selection-index-ready","durationMs":400},
+        {"kind":"setCamera","label":"fixed-isometric-camera","orientationDegrees":[-35.26440328855924,44.9999978371445,-0.000013215309125452213],"cameraPosition":[147.83978271484375,147.83978271484375,147.83978271484375],"fieldOfView":45,"durationMs":40},
+        {"kind":"selectAt","label":"inferred-top-plane","x":0.5,"y":0.62,"coordinateSpace":"normalizedViewport","expect":{"kind":"surface","source":"inferred-geometry","surfaceType":"plane","surfaceTriangleCount":2},"durationMs":80},
+        {"kind":"selectAt","label":"inferred-internal-cylinder","x":0.44,"y":0.45,"coordinateSpace":"normalizedViewport","expect":{"kind":"surface","source":"inferred-geometry","surfaceType":"cylinder","surfaceTriangleCount":126},"durationMs":80}
+      ]
+    },
+    {
+      "name": "semantic-mesh-3mf",
+      "file": "testing/input/cube_hole_from_step.3mf",
+      "actions": [
+        {"kind":"wait","label":"selection-index-ready","durationMs":400},
+        {"kind":"setCamera","label":"fixed-isometric-camera","orientationDegrees":[-35.26440328855924,44.9999978371445,-0.000013215309125452213],"cameraPosition":[147.83978271484375,147.83978271484375,147.83978271484375],"fieldOfView":45,"durationMs":40},
+        {"kind":"selectAt","label":"inferred-top-plane","x":0.5,"y":0.62,"coordinateSpace":"normalizedViewport","expect":{"kind":"surface","source":"inferred-geometry","surfaceType":"plane","surfaceTriangleCount":2},"durationMs":80},
+        {"kind":"selectAt","label":"inferred-internal-cylinder","x":0.44,"y":0.45,"coordinateSpace":"normalizedViewport","expect":{"kind":"surface","source":"inferred-geometry","surfaceType":"cylinder","surfaceTriangleCount":126},"durationMs":80}
+      ]
+    }
+  ]
+}

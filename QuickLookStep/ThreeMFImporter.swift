@@ -52,7 +52,12 @@ enum ThreeMFImporter {
         let parser = ThreeMFModelParser()
         let model = try parser.parse(data: xml)
         let modelRoot = try buildNode(from: model)
-        let scene = try SceneComposer.compose(from: modelRoot, fileName: url.lastPathComponent)
+        let hasAuthoredColors = model.colors.values.contains { !$0.isEmpty }
+        let scene = try SceneComposer.compose(
+            from: modelRoot,
+            fileName: url.lastPathComponent,
+            materialPolicy: hasAuthoredColors ? .preserve : .neutralWhenUnstyled
+        )
 
         return ThreeMFImportResult(
             scene: scene,
@@ -62,7 +67,7 @@ enum ThreeMFImporter {
                 "vertexCount": "\(model.objects.reduce(0) { $0 + $1.vertices.count })",
                 "triangleCount": "\(model.objects.reduce(0) { $0 + $1.triangles.count })",
                 "colorCount": "\(model.colors.values.reduce(0) { $0 + $1.count })",
-                "normalMode": "flat-face",
+                "normalMode": "crease-aware",
             ]
         )
     }
@@ -130,21 +135,18 @@ enum ThreeMFImporter {
         let vertexQuantizationScale: Float = 1_000_000
         var vertexCache: [QuantizedVertex: Int] = [:]
         var uniqueVertices: [SIMD3<Float>] = []
-        var vertexNormalSums: [SIMD3<Float>] = []
         var vertexColorSums: [SIMD4<Float>] = []
         var vertexColorCounts: [Int] = []
         var indices: [UInt32] = []
 
         uniqueVertices.reserveCapacity(object.triangles.count * 3)
-        vertexNormalSums.reserveCapacity(object.triangles.count * 3)
         vertexColorSums.reserveCapacity(object.triangles.count * 3)
         vertexColorCounts.reserveCapacity(object.triangles.count * 3)
         indices.reserveCapacity(object.triangles.count * 3)
 
-        func internVertex(_ position: SIMD3<Float>, normal: SIMD3<Float>, color: SIMD4<Float>) -> Int {
+        func internVertex(_ position: SIMD3<Float>, color: SIMD4<Float>) -> Int {
             let key = quantizedKey(position, scale: vertexQuantizationScale)
             if let existing = vertexCache[key] {
-                vertexNormalSums[existing] += normal
                 vertexColorSums[existing] += color
                 vertexColorCounts[existing] += 1
                 return existing
@@ -153,7 +155,6 @@ enum ThreeMFImporter {
             let index = uniqueVertices.count
             vertexCache[key] = index
             uniqueVertices.append(position)
-            vertexNormalSums.append(normal)
             vertexColorSums.append(color)
             vertexColorCounts.append(1)
             return index
@@ -171,8 +172,6 @@ enum ThreeMFImporter {
             let v1 = object.vertices[triangle.v1]
             let v2 = object.vertices[triangle.v2]
             let v3 = object.vertices[triangle.v3]
-            let normal = flatNormal(v1, v2, v3)
-
             let firstColorRef: Int? = triangle.p1 ?? triangle.p2 ?? triangle.p3 ?? object.pindex
             let secondColorRef: Int? = triangle.p2 ?? triangle.p1 ?? triangle.p3 ?? object.pindex
             let thirdColorRef: Int? = triangle.p3 ?? triangle.p1 ?? triangle.p2 ?? object.pindex
@@ -180,9 +179,9 @@ enum ThreeMFImporter {
             let colorGroup = triangle.pid ?? object.pid
 
             let colorVertices = colorRefs.map { colorVector(colorGroup: colorGroup, colorIndex: $0, colors: colors) }
-            let i0 = internVertex(v1, normal: normal, color: colorVertices[0])
-            let i1 = internVertex(v2, normal: normal, color: colorVertices[1])
-            let i2 = internVertex(v3, normal: normal, color: colorVertices[2])
+            let i0 = internVertex(v1, color: colorVertices[0])
+            let i1 = internVertex(v2, color: colorVertices[1])
+            let i2 = internVertex(v3, color: colorVertices[2])
 
             indices.append(contentsOf: [UInt32(i0), UInt32(i1), UInt32(i2)])
         }
@@ -191,21 +190,18 @@ enum ThreeMFImporter {
             throw ImportError.emptyMesh
         }
 
-        let expandedNormals = vertexNormalSums.enumerated().map { _, sum in
-            Self.normalizedOrFallback(sum, fallback: SIMD3<Float>(0, 1, 0))
-        }
         let expandedColors = zip(vertexColorSums, vertexColorCounts).map { colorSum, count in
-            guard count > 0 else { return SIMD4<Float>(0.615, 0.812, 0.929, 1.0) }
+            guard count > 0 else { return SIMD4<Float>(1, 1, 1, 1) }
             let divisor = Float(max(count, 1))
             return colorSum / divisor
         }
 
+        var sources = [geometrySource(uniqueVertices, semantic: .vertex, components: 3)]
+        if colors.values.contains(where: { !$0.isEmpty }) {
+            sources.append(geometrySource(expandedColors, semantic: .color, components: 4))
+        }
         let geometry = SCNGeometry(
-            sources: [
-                geometrySource(uniqueVertices, semantic: .vertex, components: 3),
-                geometrySource(expandedNormals, semantic: .normal, components: 3),
-                geometrySource(expandedColors, semantic: .color, components: 4),
-            ],
+            sources: sources,
             elements: [
                 SCNGeometryElement(
                     data: indices.withUnsafeBytes { Data($0) },
@@ -228,23 +224,6 @@ enum ThreeMFImporter {
         let node = SCNNode(geometry: geometry)
         node.name = object.name ?? "3mf-object-\(object.id)"
         return node
-    }
-
-    private static func normalizedOrFallback(_ vector: SIMD3<Float>, fallback: SIMD3<Float>) -> SIMD3<Float> {
-        let length = simd_length(vector)
-        guard length.isFinite, length > 0 else {
-            return fallback
-        }
-        return vector / length
-    }
-
-    private static func flatNormal(_ v1: SIMD3<Float>, _ v2: SIMD3<Float>, _ v3: SIMD3<Float>) -> SIMD3<Float> {
-        let crossed = simd_cross(v2 - v1, v3 - v1)
-        let length = simd_length(crossed)
-        guard length > 0 else {
-            return SIMD3<Float>(0, 1, 0)
-        }
-        return crossed / length
     }
 
     private static func geometrySource<T>(
@@ -278,7 +257,7 @@ enum ThreeMFImporter {
             colorIndex >= 0,
             colorIndex < group.count
         else {
-            return SIMD4<Float>(0.615, 0.812, 0.929, 1.0)
+            return SIMD4<Float>(1, 1, 1, 1)
         }
 
         let color = group[colorIndex].usingColorSpace(.sRGB) ?? group[colorIndex]

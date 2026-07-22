@@ -32,9 +32,18 @@ struct GLTFImporter: ModelImporter {
 
         for method in ["modelio", "scenekit"] {
             do {
+                let materialPolicy: SceneMaterialPolicy = sourceHasAuthoredMaterials(request.url)
+                    ? .preserve
+                    : .neutralWhenUnstyled
                 let scene = method == "modelio"
-                    ? try SceneKitAssetLoader.loadWithModelIO(request.url)
-                    : try SceneKitAssetLoader.loadWithSceneKit(request.url)
+                    ? try SceneKitAssetLoader.loadWithModelIO(
+                        request.url,
+                        materialPolicy: materialPolicy
+                    )
+                    : try SceneKitAssetLoader.loadWithSceneKit(
+                        request.url,
+                        materialPolicy: materialPolicy
+                    )
                 return importedScene(
                     scene,
                     request: request,
@@ -107,7 +116,42 @@ struct GLTFImporter: ModelImporter {
             url.path,
             (CFAbsoluteTimeGetCurrent() - start) * 1000
         )
-        return try SceneComposer.compose(from: modelRoot, fileName: url.lastPathComponent)
+        return try SceneComposer.compose(
+            from: modelRoot,
+            fileName: url.lastPathComponent,
+            materialPolicy: asset.materials.isEmpty ? .neutralWhenUnstyled : .preserve
+        )
     }
     #endif
+
+    private func sourceHasAuthoredMaterials(_ url: URL) -> Bool {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return true }
+        let jsonData: Data
+        if url.pathExtension.lowercased() == "glb" {
+            guard data.count >= 20,
+                  littleEndianUInt32(data, at: 0) == 0x46546C67,
+                  littleEndianUInt32(data, at: 16) == 0x4E4F534A else {
+                return true
+            }
+            let length = Int(littleEndianUInt32(data, at: 12))
+            guard length >= 0, 20 + length <= data.count else { return true }
+            jsonData = data.subdata(in: 20..<(20 + length))
+        } else {
+            jsonData = data
+        }
+        guard
+            let object = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+            let materials = object["materials"] as? [Any]
+        else {
+            return false
+        }
+        return !materials.isEmpty
+    }
+
+    private func littleEndianUInt32(_ data: Data, at offset: Int) -> UInt32 {
+        guard offset >= 0, offset + 4 <= data.count else { return 0 }
+        return data[offset..<(offset + 4)].enumerated().reduce(UInt32(0)) { partial, pair in
+            partial | (UInt32(pair.element) << UInt32(pair.offset * 8))
+        }
+    }
 }

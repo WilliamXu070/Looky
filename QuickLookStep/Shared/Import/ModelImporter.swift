@@ -39,6 +39,7 @@ enum ImportedModelUnit: String, Sendable {
     case centimeter
     case meter
     case inch
+    case foot
 }
 
 struct ImportedModelTransform: Sendable {
@@ -48,11 +49,56 @@ struct ImportedModelTransform: Sendable {
     static let identity = ImportedModelTransform(sourceToSceneScale: 1, sourceCenter: .zero)
 }
 
-struct ImportedTopologyHints: Sendable {
-    let faceTriangleGroups: [String: [Int]]
-    let edgeSegmentGroups: [String: [[Int]]]
+enum ImportedSurfaceKind: String, Sendable {
+    case plane
+    case cylinder
+    case cone
+    case sphere
+    case torus
+    case bSpline
+    case other
+}
 
-    static let empty = ImportedTopologyHints(faceTriangleGroups: [:], edgeSegmentGroups: [:])
+enum ImportedCurveKind: String, Sendable {
+    case line
+    case circle
+    case ellipse
+    case bSpline
+    case other
+}
+
+struct ImportedSurfaceDescriptor: Sendable {
+    let kind: ImportedSurfaceKind
+    let origin: SIMD3<Float>?
+    let axis: SIMD3<Float>?
+    let normal: SIMD3<Float>?
+    let radius: Float?
+    let secondaryRadius: Float?
+    let halfAngle: Float?
+}
+
+struct ImportedCurveDescriptor: Sendable {
+    let kind: ImportedCurveKind
+}
+
+struct ImportedFaceTopology: Sendable {
+    let sourceID: String
+    let triangleIndices: [Int]
+    let descriptor: ImportedSurfaceDescriptor
+}
+
+struct ImportedEdgeTopology: Sendable {
+    let sourceID: String
+    let points: [SIMD3<Float>]
+    let incidentFaceIDs: [String]
+    let descriptor: ImportedCurveDescriptor
+}
+
+struct ImportedTopologyHints: Sendable {
+    let faces: [ImportedFaceTopology]
+    let edges: [ImportedEdgeTopology]
+
+    static let empty = ImportedTopologyHints(faces: [], edges: [])
 }
 
 struct ImportDiagnostics: Sendable {

@@ -3,6 +3,11 @@ import Foundation
 import SceneKit
 import simd
 
+enum SceneMaterialPolicy: Equatable {
+    case preserve
+    case neutralWhenUnstyled
+}
+
 enum SceneComposer {
     private enum MetadataKey {
         static let sourceToSceneScale = "quicklook.sourceToSceneScale"
@@ -11,8 +16,12 @@ enum SceneComposer {
         static let sourceCenterZ = "quicklook.sourceCenter.z"
     }
 
-    static func compose(from modelRoot: SCNNode, fileName: String) throws -> SCNScene {
-        applyMeshLightingFixups(to: modelRoot)
+    static func compose(
+        from modelRoot: SCNNode,
+        fileName: String,
+        materialPolicy: SceneMaterialPolicy = .preserve
+    ) throws -> SCNScene {
+        applyMeshLightingFixups(to: modelRoot, materialPolicy: materialPolicy)
         modelRoot.removeFromParentNode()
 
         let scene = SCNScene()
@@ -110,7 +119,6 @@ enum SceneComposer {
     }
 
     static func ensureNormalsIfMissing(for geometry: SCNGeometry) -> SCNGeometry {
-        if !geometry.sources(for: .normal).isEmpty { return geometry }
         guard let vertexSource = geometry.sources(for: .vertex).first,
               vertexSource.bytesPerComponent == MemoryLayout<Float>.size,
               geometry.elements.allSatisfy({ $0.primitiveType == .triangles })
@@ -120,55 +128,11 @@ enum SceneComposer {
 
         let vertices = readVertices(from: vertexSource)
         guard vertices.count == vertexSource.vectorCount else { return geometry }
-        var normalSums = [SIMD3<Float>](repeating: .zero, count: vertices.count)
-
-        for element in geometry.elements {
-            for primitive in 0..<element.primitiveCount {
-                guard
-                    let i0 = readIndex(from: element, position: primitive * 3),
-                    let i1 = readIndex(from: element, position: primitive * 3 + 1),
-                    let i2 = readIndex(from: element, position: primitive * 3 + 2),
-                    vertices.indices.contains(i0),
-                    vertices.indices.contains(i1),
-                    vertices.indices.contains(i2)
-                else {
-                    return geometry
-                }
-                let cross = simd_cross(vertices[i1] - vertices[i0], vertices[i2] - vertices[i0])
-                let length = simd_length(cross)
-                guard length > 0 else { continue }
-                let normal = cross / length
-                normalSums[i0] += normal
-                normalSums[i1] += normal
-                normalSums[i2] += normal
-            }
+        if let normalSource = geometry.sources(for: .normal).first,
+           hasUsableNormals(normalSource, expectedVertexCount: vertices.count) {
+            return geometry
         }
-
-        var values: [Float] = []
-        values.reserveCapacity(normalSums.count * 3)
-        for sum in normalSums {
-            let length = simd_length(sum)
-            let normal = length > 0 ? sum / length : SIMD3<Float>(0, 1, 0)
-            values.append(contentsOf: [normal.x, normal.y, normal.z])
-        }
-        let source = values.withUnsafeBytes { bytes in
-            SCNGeometrySource(
-                data: Data(bytes),
-                semantic: .normal,
-                vectorCount: normalSums.count,
-                usesFloatComponents: true,
-                componentsPerVector: 3,
-                bytesPerComponent: MemoryLayout<Float>.size,
-                dataOffset: 0,
-                dataStride: 3 * MemoryLayout<Float>.size
-            )
-        }
-        let rebuilt = SCNGeometry(
-            sources: geometry.sources.filter { $0.semantic != .normal } + [source],
-            elements: geometry.elements
-        )
-        rebuilt.materials = geometry.materials
-        return rebuilt
+        return rebuildWithCreaseAwareNormals(geometry, vertices: vertices) ?? geometry
     }
 
     private static func recordSourceTransform(
@@ -191,12 +155,18 @@ enum SceneComposer {
         return node
     }
 
-    private static func applyMeshLightingFixups(to root: SCNNode) {
+    private static func applyMeshLightingFixups(
+        to root: SCNNode,
+        materialPolicy: SceneMaterialPolicy
+    ) {
         root.enumerateChildNodes { node, _ in
             guard let geometry = node.geometry else { return }
             let fixed = ensureNormalsIfMissing(for: geometry)
             node.geometry = fixed
-            if fixed.materials.isEmpty {
+            let hasVertexColors = !fixed.sources(for: .color).isEmpty
+            let hasTexture = fixed.materials.contains(where: materialHasTexture)
+            if fixed.materials.isEmpty
+                || (materialPolicy == .neutralWhenUnstyled && !hasVertexColors && !hasTexture) {
                 fixed.materials = [defaultLitMaterial()]
             }
             for material in fixed.materials {
@@ -221,7 +191,224 @@ enum SceneComposer {
         return material
     }
 
+    private struct TriangleRecord {
+        let sourceIndices: [Int]
+        let unitNormal: SIMD3<Float>
+        let areaNormal: SIMD3<Float>
+    }
+
+    private struct PositionKey: Hashable {
+        let x: Int64
+        let y: Int64
+        let z: Int64
+    }
+
+    private static func hasUsableNormals(
+        _ source: SCNGeometrySource,
+        expectedVertexCount: Int
+    ) -> Bool {
+        guard source.vectorCount == expectedVertexCount else { return false }
+        let normals = readFloat3Values(from: source)
+        guard normals.count == expectedVertexCount, !normals.isEmpty else { return false }
+        let usableCount = normals.reduce(0) { count, normal in
+            let length = simd_length(normal)
+            return count + (length.isFinite && length > 0.1 ? 1 : 0)
+        }
+        return Double(usableCount) / Double(normals.count) >= 0.9
+    }
+
+    private static func rebuildWithCreaseAwareNormals(
+        _ geometry: SCNGeometry,
+        vertices: [SIMD3<Float>]
+    ) -> SCNGeometry? {
+        var triangles: [TriangleRecord] = []
+        var elementTriangleIndices: [[Int]] = []
+        for element in geometry.elements {
+            var triangleIndices: [Int] = []
+            triangleIndices.reserveCapacity(element.primitiveCount)
+            for primitive in 0..<element.primitiveCount {
+                guard
+                    let i0 = readIndex(from: element, position: primitive * 3),
+                    let i1 = readIndex(from: element, position: primitive * 3 + 1),
+                    let i2 = readIndex(from: element, position: primitive * 3 + 2),
+                    vertices.indices.contains(i0),
+                    vertices.indices.contains(i1),
+                    vertices.indices.contains(i2)
+                else {
+                    return nil
+                }
+                let areaNormal = simd_cross(vertices[i1] - vertices[i0], vertices[i2] - vertices[i0])
+                let length = simd_length(areaNormal)
+                let unitNormal = length > 0 ? areaNormal / length : SIMD3<Float>(0, 1, 0)
+                triangleIndices.append(triangles.count)
+                triangles.append(
+                    TriangleRecord(
+                        sourceIndices: [i0, i1, i2],
+                        unitNormal: unitNormal,
+                        areaNormal: areaNormal
+                    )
+                )
+            }
+            elementTriangleIndices.append(triangleIndices)
+        }
+        guard !triangles.isEmpty else { return nil }
+
+        let minimum = vertices.reduce(SIMD3<Float>(repeating: .greatestFiniteMagnitude)) {
+            simd_min($0, $1)
+        }
+        let maximum = vertices.reduce(SIMD3<Float>(repeating: -Float.greatestFiniteMagnitude)) {
+            simd_max($0, $1)
+        }
+        let extent = maximum - minimum
+        let weldTolerance = max(max(extent.x, max(extent.y, extent.z)) * 0.000001, 0.00000001)
+        func positionKey(_ point: SIMD3<Float>) -> PositionKey {
+            PositionKey(
+                x: Int64((point.x / weldTolerance).rounded()),
+                y: Int64((point.y / weldTolerance).rounded()),
+                z: Int64((point.z / weldTolerance).rounded())
+            )
+        }
+
+        var incidentTriangles: [PositionKey: [Int]] = [:]
+        for (triangleIndex, triangle) in triangles.enumerated() {
+            for sourceIndex in triangle.sourceIndices {
+                incidentTriangles[positionKey(vertices[sourceIndex]), default: []].append(triangleIndex)
+            }
+        }
+
+        let creaseCosine = cos(Float(35) * .pi / 180)
+        var sourceIndices: [Int] = []
+        var rebuiltNormals: [Float] = []
+        var rebuiltElementIndices: [[UInt32]] = []
+        sourceIndices.reserveCapacity(triangles.count * 3)
+        rebuiltNormals.reserveCapacity(triangles.count * 9)
+
+        for triangleIndices in elementTriangleIndices {
+            var indices: [UInt32] = []
+            indices.reserveCapacity(triangleIndices.count * 3)
+            for triangleIndex in triangleIndices {
+                let triangle = triangles[triangleIndex]
+                for sourceIndex in triangle.sourceIndices {
+                    let neighbors = incidentTriangles[positionKey(vertices[sourceIndex])] ?? [triangleIndex]
+                    var normalSum = SIMD3<Float>.zero
+                    for neighborIndex in neighbors {
+                        let neighbor = triangles[neighborIndex]
+                        if simd_dot(triangle.unitNormal, neighbor.unitNormal) >= creaseCosine {
+                            normalSum += neighbor.areaNormal
+                        }
+                    }
+                    let length = simd_length(normalSum)
+                    let normal = length > 0 ? normalSum / length : triangle.unitNormal
+                    sourceIndices.append(sourceIndex)
+                    rebuiltNormals.append(contentsOf: [normal.x, normal.y, normal.z])
+                    indices.append(UInt32(sourceIndices.count - 1))
+                }
+            }
+            rebuiltElementIndices.append(indices)
+        }
+
+        var rebuiltSources: [SCNGeometrySource] = []
+        for source in geometry.sources where source.semantic != .normal {
+            guard let rebuiltSource = deindexed(source, using: sourceIndices) else { return nil }
+            rebuiltSources.append(rebuiltSource)
+        }
+        let normalSource = rebuiltNormals.withUnsafeBytes { bytes in
+            SCNGeometrySource(
+                data: Data(bytes),
+                semantic: .normal,
+                vectorCount: sourceIndices.count,
+                usesFloatComponents: true,
+                componentsPerVector: 3,
+                bytesPerComponent: MemoryLayout<Float>.size,
+                dataOffset: 0,
+                dataStride: 3 * MemoryLayout<Float>.size
+            )
+        }
+        rebuiltSources.append(normalSource)
+
+        let rebuiltElements = rebuiltElementIndices.map { indices in
+            SCNGeometryElement(
+                data: indices.withUnsafeBytes { Data($0) },
+                primitiveType: .triangles,
+                primitiveCount: indices.count / 3,
+                bytesPerIndex: MemoryLayout<UInt32>.size
+            )
+        }
+        let rebuilt = SCNGeometry(sources: rebuiltSources, elements: rebuiltElements)
+        rebuilt.name = geometry.name
+        rebuilt.materials = geometry.materials
+        rebuilt.subdivisionLevel = geometry.subdivisionLevel
+        rebuilt.wantsAdaptiveSubdivision = geometry.wantsAdaptiveSubdivision
+        return rebuilt
+    }
+
+    private static func deindexed(
+        _ source: SCNGeometrySource,
+        using sourceIndices: [Int]
+    ) -> SCNGeometrySource? {
+        let vectorByteCount = source.componentsPerVector * source.bytesPerComponent
+        let sourceStride = max(source.dataStride, vectorByteCount)
+        var output = Data(count: sourceIndices.count * vectorByteCount)
+        var valid = true
+        output.withUnsafeMutableBytes { destinationBytes in
+            source.data.withUnsafeBytes { sourceBytes in
+                guard
+                    let destinationBase = destinationBytes.baseAddress,
+                    let sourceBase = sourceBytes.baseAddress
+                else {
+                    valid = false
+                    return
+                }
+                for (outputIndex, sourceIndex) in sourceIndices.enumerated() {
+                    let sourceOffset = source.dataOffset + sourceIndex * sourceStride
+                    guard sourceOffset + vectorByteCount <= source.data.count else {
+                        valid = false
+                        return
+                    }
+                    destinationBase.advanced(by: outputIndex * vectorByteCount).copyMemory(
+                        from: sourceBase.advanced(by: sourceOffset),
+                        byteCount: vectorByteCount
+                    )
+                }
+            }
+        }
+        guard valid else { return nil }
+        return SCNGeometrySource(
+            data: output,
+            semantic: source.semantic,
+            vectorCount: sourceIndices.count,
+            usesFloatComponents: source.usesFloatComponents,
+            componentsPerVector: source.componentsPerVector,
+            bytesPerComponent: source.bytesPerComponent,
+            dataOffset: 0,
+            dataStride: vectorByteCount
+        )
+    }
+
+    private static func materialHasTexture(_ material: SCNMaterial) -> Bool {
+        [
+            material.diffuse, material.normal, material.ambientOcclusion,
+            material.emission, material.metalness, material.multiply,
+            material.reflective, material.roughness, material.specular,
+            material.transparent,
+        ].contains { property in
+            guard let contents = property.contents else { return false }
+            return !(contents is NSColor) && !(contents is NSNumber)
+        }
+    }
+
     private static func readVertices(from source: SCNGeometrySource) -> [SIMD3<Float>] {
+        readFloat3Values(from: source)
+    }
+
+    private static func readFloat3Values(from source: SCNGeometrySource) -> [SIMD3<Float>] {
+        guard
+            source.usesFloatComponents,
+            source.bytesPerComponent == MemoryLayout<Float>.size,
+            source.componentsPerVector >= 3
+        else {
+            return []
+        }
         var vertices: [SIMD3<Float>] = []
         vertices.reserveCapacity(source.vectorCount)
         let stride = max(source.dataStride, source.componentsPerVector * source.bytesPerComponent)

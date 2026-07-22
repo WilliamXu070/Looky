@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SceneKit
+import QuickLookCore
 import simd
 
 struct EdgeSnap {
@@ -20,6 +21,22 @@ struct EdgeSelectionCandidate {
     let edgeSnap: EdgeSnap
     let chainWorldPoints: [SIMD3<Float>]
     let chainKind: String
+    let semanticEdge: SelectedEdge?
+    let projectedDistancePoints: Float?
+
+    init(
+        edgeSnap: EdgeSnap,
+        chainWorldPoints: [SIMD3<Float>],
+        chainKind: String,
+        semanticEdge: SelectedEdge? = nil,
+        projectedDistancePoints: Float? = nil
+    ) {
+        self.edgeSnap = edgeSnap
+        self.chainWorldPoints = chainWorldPoints
+        self.chainKind = chainKind
+        self.semanticEdge = semanticEdge
+        self.projectedDistancePoints = projectedDistancePoints
+    }
 }
 
 struct SurfaceProbeRecord: Codable {
@@ -74,7 +91,12 @@ func applyAutomatedSurfaceSelectionOverlay(to scene: SCNScene) -> SurfaceOverlay
             selectionModel: hit.selectionModel,
             baseMaterial: hit.node.geometry?.materials.first
            ) {
-            hit.node.geometry = selectedGeometry
+            addAutomatedSurfaceSelectionOverlay(
+                selectedGeometry,
+                matching: hit.node,
+                to: scene,
+                selectionRootName: selectionRootName
+            )
             return SurfaceOverlayTestResult(
                 applied: true,
                 triangleCount: component.count,
@@ -121,7 +143,12 @@ func applyAutomatedSurfaceSelectionOverlay(to scene: SCNScene) -> SurfaceOverlay
         return SurfaceOverlayTestResult(applied: false, triangleCount: 0, nodeName: nil)
     }
 
-    best.node.geometry = selectedGeometry
+    addAutomatedSurfaceSelectionOverlay(
+        selectedGeometry,
+        matching: best.node,
+        to: scene,
+        selectionRootName: selectionRootName
+    )
     return SurfaceOverlayTestResult(
         applied: true,
         triangleCount: best.triangles.count,
@@ -252,7 +279,7 @@ func surfaceOverlayScore(
 func makeSurfaceSelectionGeometry(
     triangleIndices: [Int],
     selectionModel: SelectionModel,
-    baseMaterial: SCNMaterial?
+    baseMaterial _: SCNMaterial?
 ) -> SCNGeometry? {
     let selected = Set(triangleIndices)
     guard !selected.isEmpty else {
@@ -261,29 +288,39 @@ func makeSurfaceSelectionGeometry(
 
     var vertices: [SCNVector3] = []
     var normals: [SCNVector3] = []
-    var baseIndices: [UInt32] = []
     var selectedIndices: [UInt32] = []
-    vertices.reserveCapacity(selectionModel.triangles.count * 3)
-    normals.reserveCapacity(selectionModel.triangles.count * 3)
-    baseIndices.reserveCapacity(selectionModel.triangles.count * 3)
+    vertices.reserveCapacity(selected.count * 3)
+    normals.reserveCapacity(selected.count * 3)
     selectedIndices.reserveCapacity(selected.count * 3)
+    let normalOffset = max(selectionModel.maxExtent * 0.00001, 0.000001)
 
-    for triangle in selectionModel.triangles {
-        let triangleIndex = triangle.id.rawValue
-        let targetIsSelected = selected.contains(triangleIndex)
+    let selectedTriangles = selectionModel.triangles.filter { selected.contains($0.id.rawValue) }
+    var selectedVertexNormals: [Int: SIMD3<Float>] = [:]
+    selectedVertexNormals.reserveCapacity(selected.count * 2)
+    for triangle in selectedTriangles {
+        let weightedNormal = triangle.normal * selectionTriangleArea(
+            triangle,
+            vertices: selectionModel.vertices
+        )
+        for vertexIndex in triangle.vertexIndices {
+            selectedVertexNormals[vertexIndex, default: .zero] += weightedNormal
+        }
+    }
+
+    for triangle in selectedTriangles {
         for vertexIndex in triangle.vertexIndices {
             guard vertexIndex >= 0, vertexIndex < selectionModel.vertices.count else {
                 continue
             }
 
-            vertices.append(qlsSCN(selectionModel.vertices[vertexIndex]))
-            normals.append(qlsSCN(triangle.normal))
-            let index = UInt32(vertices.count - 1)
-            if targetIsSelected {
-                selectedIndices.append(index)
-            } else {
-                baseIndices.append(index)
-            }
+            let normal = qlsNormalized(
+                selectedVertexNormals[vertexIndex] ?? triangle.normal,
+                fallback: triangle.normal
+            )
+            let point = selectionModel.vertices[vertexIndex] + normal * normalOffset
+            vertices.append(qlsSCN(point))
+            normals.append(qlsSCN(normal))
+            selectedIndices.append(UInt32(vertices.count - 1))
         }
     }
 
@@ -293,20 +330,26 @@ func makeSurfaceSelectionGeometry(
 
     let vertexSource = SCNGeometrySource(vertices: vertices)
     let normalSource = SCNGeometrySource(normals: normals)
-    var elements: [SCNGeometryElement] = []
-    var materials: [SCNMaterial] = []
-
-    if !baseIndices.isEmpty {
-        elements.append(makeTriangleElement(indices: baseIndices))
-        materials.append(copyBaseSurfaceMaterial(baseMaterial))
-    }
-
-    elements.append(makeTriangleElement(indices: selectedIndices))
-    materials.append(surfaceSelectionMaterial())
-
-    let geometry = SCNGeometry(sources: [vertexSource, normalSource], elements: elements)
-    geometry.materials = materials
+    let geometry = SCNGeometry(
+        sources: [vertexSource, normalSource],
+        elements: [makeTriangleElement(indices: selectedIndices)]
+    )
+    geometry.materials = [surfaceSelectionMaterial()]
     return geometry
+}
+
+func selectionTriangleArea(
+    _ triangle: SelectionTriangle,
+    vertices: [SIMD3<Float>]
+) -> Float {
+    let indices = triangle.vertexIndices
+    guard indices.allSatisfy({ $0 >= 0 && $0 < vertices.count }) else {
+        return 1
+    }
+    let a = vertices[indices[0]]
+    let b = vertices[indices[1]]
+    let c = vertices[indices[2]]
+    return max(simd_length(simd_cross(b - a, c - a)) * 0.5, 0.000001)
 }
 
 func makeTriangleElement(indices: [UInt32]) -> SCNGeometryElement {
@@ -318,15 +361,21 @@ func makeTriangleElement(indices: [UInt32]) -> SCNGeometryElement {
     )
 }
 
-func copyBaseSurfaceMaterial(_ material: SCNMaterial?) -> SCNMaterial {
-    if let copy = material?.copy() as? SCNMaterial {
-        return copy
-    }
+func addAutomatedSurfaceSelectionOverlay(
+    _ geometry: SCNGeometry,
+    matching sourceNode: SCNNode,
+    to scene: SCNScene,
+    selectionRootName: String
+) {
+    let overlayRoot = SCNNode()
+    overlayRoot.name = selectionRootName
+    scene.rootNode.addChildNode(overlayRoot)
 
-    let fallback = SCNMaterial()
-    fallback.diffuse.contents = NSColor(calibratedWhite: 0.82, alpha: 1.0)
-    fallback.lightingModel = .physicallyBased
-    return fallback
+    let overlay = SCNNode(geometry: geometry)
+    overlay.name = "selection-surface"
+    overlay.renderingOrder = 40
+    overlayRoot.addChildNode(overlay)
+    overlay.simdWorldTransform = sourceNode.simdWorldTransform
 }
 
 func makeSurfaceOverlayNode(
@@ -393,14 +442,15 @@ func makeSurfaceOverlayNode(
 func surfaceSelectionMaterial() -> SCNMaterial {
     let material = SCNMaterial()
     let color = NSColor(calibratedRed: 1.0, green: 0.38, blue: 0.0, alpha: 1.0)
-    material.lightingModel = .constant
+    material.lightingModel = .blinn
     material.diffuse.contents = color
-    material.emission.contents = color
+    material.specular.contents = NSColor(white: 0.16, alpha: 1.0)
+    material.shininess = 14
     material.transparency = 1.0
     material.blendMode = .replace
     material.isDoubleSided = true
     material.readsFromDepthBuffer = true
-    material.writesToDepthBuffer = true
+    material.writesToDepthBuffer = false
     return material
 }
 
@@ -421,8 +471,43 @@ func qlsNormalized(_ vector: SIMD3<Float>, fallback: SIMD3<Float>) -> SIMD3<Floa
 }
 
 enum ResolvedSelection {
+    case point(hit: SCNHitTestResult, selection: PointSelectionCandidate)
     case edge(hit: SCNHitTestResult, selection: EdgeSelectionCandidate)
     case surface(hit: SCNHitTestResult, selection: SurfaceSelectionCandidate)
+}
+
+struct PointSelectionCandidate {
+    let semanticPoint: SelectedPoint
+    let worldPosition: SIMD3<Float>
+    let projectedDistancePoints: Float
+}
+
+enum SelectionCommitSource {
+    case resolve
+    case cached(ResolvedSelection?)
+}
+
+extension ResolvedSelection {
+    var entityID: SelectionEntityID {
+        switch self {
+        case .point(_, let selection):
+            selection.semanticPoint.id
+        case .edge(_, let selection):
+            selection.semanticEdge?.id ?? SelectionEntityID(
+                "inferred:edge:\(selection.edgeSnap.selectedEdge.a)-\(selection.edgeSnap.selectedEdge.b)"
+            )
+        case .surface(_, let selection):
+            selection.semanticSurface?.id ?? SelectionEntityID("surface:triangle:\(selection.seedTriangle)")
+        }
+    }
+
+    var kindName: String {
+        switch self {
+        case .point: "point"
+        case .edge: "edge"
+        case .surface: "surface"
+        }
+    }
 }
 
 struct SurfaceSelectionCandidate {
@@ -431,6 +516,23 @@ struct SurfaceSelectionCandidate {
     let nearestFeatureEdgeDistance: Float
     let nearestFeatureEdgeAcceleration: String
     let edgePromotionThreshold: Float
+    let semanticSurface: SelectedSurface?
+
+    init(
+        seedTriangle: Int,
+        triangleIndices: [Int],
+        nearestFeatureEdgeDistance: Float,
+        nearestFeatureEdgeAcceleration: String,
+        edgePromotionThreshold: Float,
+        semanticSurface: SelectedSurface? = nil
+    ) {
+        self.seedTriangle = seedTriangle
+        self.triangleIndices = triangleIndices
+        self.nearestFeatureEdgeDistance = nearestFeatureEdgeDistance
+        self.nearestFeatureEdgeAcceleration = nearestFeatureEdgeAcceleration
+        self.edgePromotionThreshold = edgePromotionThreshold
+        self.semanticSurface = semanticSurface
+    }
 }
 
 struct EdgeSelectionDownload: Codable {

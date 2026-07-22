@@ -26,12 +26,14 @@ struct TestingAction: Codable {
     /// - setCamera: restore an exact camera pose for replay
     /// - setMeasurementUnit: update the measurement panel unit or calibration
     let kind: TestingActionKind
+    let label: String?
     let value: Double?
     let durationMs: Double?
     let x: Double?
     let y: Double?
     let coordinateSpace: SelectionDebugCoordinateSpace?
     let expect: SelectionDebugExpectation?
+    let hoverExpect: HoverSelectionExpectation?
     let modifiers: [String]?
     let measurementExpect: SelectionMeasurementExpectation?
     let unit: String?
@@ -42,12 +44,14 @@ struct TestingAction: Codable {
 
     init(
         kind: TestingActionKind,
+        label: String? = nil,
         value: Double? = nil,
         durationMs: Double? = nil,
         x: Double? = nil,
         y: Double? = nil,
         coordinateSpace: SelectionDebugCoordinateSpace? = nil,
         expect: SelectionDebugExpectation? = nil,
+        hoverExpect: HoverSelectionExpectation? = nil,
         modifiers: [String]? = nil,
         measurementExpect: SelectionMeasurementExpectation? = nil,
         unit: String? = nil,
@@ -57,12 +61,14 @@ struct TestingAction: Codable {
         fieldOfView: Double? = nil
     ) {
         self.kind = kind
+        self.label = label
         self.value = value
         self.durationMs = durationMs
         self.x = x
         self.y = y
         self.coordinateSpace = coordinateSpace
         self.expect = expect
+        self.hoverExpect = hoverExpect
         self.modifiers = modifiers
         self.measurementExpect = measurementExpect
         self.unit = unit
@@ -81,8 +87,19 @@ enum TestingActionKind: String, Codable {
     case wait
     case selectSurface
     case selectAt
+    case hoverAt
+    case clearHover
     case setCamera
     case setMeasurementUnit
+    case resetMeasurementScale
+}
+
+struct HoverSelectionExpectation: Codable {
+    let kind: String?
+    let sourceEntityID: String?
+    let pointKind: String?
+    let maxElapsedMs: Double?
+    let resolverPassDelta: Int?
 }
 
 struct TestingRunReport: Codable {
@@ -114,6 +131,10 @@ struct TestingSample: Codable {
     let selectionDebugEventPath: String?
     let selectionDebugSummary: SelectionDebugEventSummary?
     let selectionDebugExpectationFailures: [String]?
+    let hoverSummary: HoverSelectionSummary?
+    let hoverExpectationFailures: [String]?
+    let hoverResolverPassCount: Int
+    let hoverResolverPassDelta: Int?
     let measurementSummary: SelectionMeasurementSummary?
     let measurementExpectationFailures: [String]?
 }

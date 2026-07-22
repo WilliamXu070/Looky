@@ -13,6 +13,10 @@ public struct SelectionEngine: Sendable {
     private let featureIndex: FeatureEdgeBVH
     private let trianglesByEdge: [MeshEdgeID: [MeshTriangleID]]
     private let featureEdgesByVertex: [Int: [MeshEdgeID]]
+    private let exactSurfacesByTriangle: [MeshTriangleID: SelectedSurface]
+    private let inferredSurfacesByTriangle: [MeshTriangleID: SelectedSurface]
+    public let exactEdges: [SelectedEdge]
+    public let points: [SelectedPoint]
 
     public init(mesh: MeshSnapshot, settings: SelectionSettings = .init()) {
         self.mesh = mesh
@@ -59,6 +63,75 @@ public struct SelectionEngine: Sendable {
             featureAdjacency[segment.id.b, default: []].append(segment.id)
         }
         featureEdgesByVertex = featureAdjacency.mapValues { $0.sorted() }
+
+        var exactSurfaces: [MeshTriangleID: SelectedSurface] = [:]
+        for face in mesh.topologyHints?.faces ?? [] {
+            let triangles = face.triangles.sorted()
+            let surface = SelectedSurface(
+                source: mesh.sourceID,
+                triangles: triangles,
+                id: Self.qualifiedID(mesh: mesh, sourceID: face.sourceID),
+                entitySource: .exactTopology,
+                descriptor: face.descriptor
+            )
+            for triangle in triangles where exactSurfaces[triangle] == nil {
+                exactSurfaces[triangle] = surface
+            }
+        }
+        exactSurfacesByTriangle = exactSurfaces
+
+        let semanticEdges: [SelectedEdge] = (mesh.topologyHints?.edges ?? []).compactMap { edge in
+            let orderedPoints: [SIMD3<Float>]
+            if edge.points.count >= 2 {
+                orderedPoints = edge.points
+            } else {
+                orderedPoints = edge.edges.sorted().flatMap { meshEdge -> [SIMD3<Float>] in
+                    guard mesh.vertices.indices.contains(meshEdge.a), mesh.vertices.indices.contains(meshEdge.b) else {
+                        return []
+                    }
+                    return [mesh.vertices[meshEdge.a], mesh.vertices[meshEdge.b]]
+                }
+            }
+            guard orderedPoints.count >= 2 else { return nil }
+            return SelectedEdge(
+                source: mesh.sourceID,
+                edges: edge.edges.sorted(),
+                points: orderedPoints,
+                id: Self.qualifiedID(mesh: mesh, sourceID: edge.sourceID),
+                entitySource: .exactTopology,
+                descriptor: edge.descriptor,
+                incidentFaceIDs: edge.incidentFaceIDs
+            )
+        }.sorted { $0.id < $1.id }
+        exactEdges = semanticEdges
+
+        var inferredSurfaces: [MeshTriangleID: SelectedSurface] = [:]
+        if exactSurfaces.isEmpty {
+            for region in SurfacePrimitiveDetector.detect(
+                mesh: mesh,
+                featureEdgeDegrees: settings.featureEdgeDegrees
+            ) {
+                let surface = SelectedSurface(
+                    source: mesh.sourceID,
+                    triangles: region.triangles,
+                    id: region.id,
+                    entitySource: .inferredGeometry,
+                    descriptor: region.descriptor
+                )
+                for triangle in region.triangles where inferredSurfaces[triangle] == nil {
+                    inferredSurfaces[triangle] = surface
+                }
+            }
+        }
+        inferredSurfacesByTriangle = inferredSurfaces
+        points = Self.makeSelectionPoints(
+            mesh: mesh,
+            exactEdges: semanticEdges,
+            featureEdgesByVertex: featureAdjacency,
+            records: records,
+            exactSurfacesByTriangle: exactSurfaces,
+            inferredSurfacesByTriangle: inferredSurfaces
+        )
     }
 
     public func resolve(_ query: SelectionQuery) -> SelectionResolution {
@@ -89,10 +162,21 @@ public struct SelectionEngine: Sendable {
             )
         }
 
-        let patch = surfacePatch(from: query.triangleID)
+        guard let surface = surface(at: query.triangleID) else {
+            return SelectionResolution(
+                kind: .none,
+                entity: nil,
+                seedTriangle: query.triangleID,
+                nearestFeatureEdgeDistance: nearest?.distance,
+                edgeThreshold: edgeThreshold,
+                reason: "none: hit surface is not exact topology, planar, or cylindrical",
+                rejectionCode: .unsupportedSurface,
+                acceleration: .cpuBVH
+            )
+        }
         return SelectionResolution(
             kind: .surface,
-            entity: .surface(SelectedSurface(source: mesh.sourceID, triangles: patch)),
+            entity: .surface(surface),
             seedTriangle: query.triangleID,
             nearestFeatureEdgeDistance: nearest?.distance,
             edgeThreshold: edgeThreshold,
@@ -103,6 +187,23 @@ public struct SelectionEngine: Sendable {
 
     public var edgeThreshold: Float {
         max(mesh.maxExtent * settings.edgeThresholdScale, 0.000_001)
+    }
+
+    public func surface(at triangleID: MeshTriangleID) -> SelectedSurface? {
+        exactSurfacesByTriangle[triangleID] ?? inferredSurfacesByTriangle[triangleID]
+    }
+
+    public func exactFaceID(at triangleID: MeshTriangleID) -> SelectionEntityID? {
+        exactSurfacesByTriangle[triangleID]?.id
+    }
+
+    public func points(incidentTo surface: SelectedSurface?) -> [SelectedPoint] {
+        guard let surface else { return points }
+        return points.filter { point in
+            point.incidentFaceIDs.isEmpty || point.incidentFaceIDs.contains(where: {
+                surface.id.rawValue == $0 || surface.id.rawValue.hasSuffix($0)
+            })
+        }
     }
 
     private func finiteFeatureEdges(from seed: MeshEdgeID) -> [MeshEdgeID] {
@@ -178,26 +279,151 @@ public struct SelectionEngine: Sendable {
         return points
     }
 
-    private func surfacePatch(from seed: MeshTriangleID) -> [MeshTriangleID] {
-        if let hinted = mesh.topologyHints?.faces.first(where: { $0.triangles.contains(seed) }) {
-            return hinted.triangles.sorted()
-        }
+    private static func qualifiedID(mesh: MeshSnapshot, sourceID: String) -> SelectionEntityID {
+        SelectionEntityID(
+            "\(mesh.sourceID.model):\(mesh.sourceID.node):\(mesh.sourceID.geometry):\(sourceID)"
+        )
+    }
 
-        var visited: Set<MeshTriangleID> = [seed]
-        var queue = [seed]
-        while let current = queue.popLast(), let triangle = mesh.triangles[safe: current.rawValue] {
-            for edge in triangle.edges where edges[edge]?.isFeature != true {
-                for neighbor in trianglesByEdge[edge] ?? [] where neighbor != current {
-                    guard let next = mesh.triangles[safe: neighbor.rawValue] else { continue }
-                    let cosine = max(-1, min(1, simd_dot(triangle.normal, next.normal)))
-                    let angle = acos(cosine) * 180 / .pi
-                    if angle <= settings.smoothSurfaceDegrees && visited.insert(neighbor).inserted {
-                        queue.append(neighbor)
-                    }
+    private struct PointSeed {
+        var position: SIMD3<Float>
+        var entitySource: SelectionEntitySource
+        var parentEntityIDs: Set<SelectionEntityID>
+        var incidentFaceIDs: Set<String>
+    }
+
+    private static func makeSelectionPoints(
+        mesh: MeshSnapshot,
+        exactEdges: [SelectedEdge],
+        featureEdgesByVertex: [Int: [MeshEdgeID]],
+        records: [MeshEdgeID: EdgeRecord],
+        exactSurfacesByTriangle: [MeshTriangleID: SelectedSurface],
+        inferredSurfacesByTriangle: [MeshTriangleID: SelectedSurface]
+    ) -> [SelectedPoint] {
+        let tolerance = max(mesh.maxExtent * 0.000_01, 0.000_001)
+        var vertexSeeds: [PointSeed] = []
+        var curveCenters: [SelectedPoint] = []
+
+        for edge in exactEdges where edge.points.count >= 2 {
+            let isClosed = simd_distance(edge.points[0], edge.points[edge.points.count - 1]) <= tolerance
+            if !isClosed {
+                for endpoint in [edge.points[0], edge.points[edge.points.count - 1]] {
+                    mergeVertexSeed(
+                        PointSeed(
+                            position: endpoint,
+                            entitySource: .exactTopology,
+                            parentEntityIDs: [edge.id],
+                            incidentFaceIDs: edge.incidentFaceIDs
+                        ),
+                        into: &vertexSeeds,
+                        tolerance: tolerance
+                    )
                 }
             }
+
+            if edge.descriptor.kind == .circle,
+               let circle = EdgePrimitiveFitter.fittedCircle(
+                    points: edge.points,
+                    tolerance: max(tolerance * 8, mesh.maxExtent * 0.000_2)
+               ) {
+                curveCenters.append(
+                    SelectedPoint(
+                        id: SelectionEntityID("\(edge.id.rawValue):point:center"),
+                        source: mesh.sourceID,
+                        entitySource: edge.entitySource,
+                        kind: .curveCenter,
+                        position: circle.center,
+                        parentEntityIDs: [edge.id],
+                        incidentFaceIDs: edge.incidentFaceIDs
+                    )
+                )
+            }
         }
-        return visited.sorted()
+
+        if exactEdges.isEmpty {
+            for (vertexIndex, incidentEdges) in featureEdgesByVertex.sorted(by: { $0.key < $1.key }) {
+                guard mesh.vertices.indices.contains(vertexIndex),
+                      isSelectableFeatureVertex(
+                        vertexIndex,
+                        incidentEdges: incidentEdges,
+                        mesh: mesh
+                      ) else {
+                    continue
+                }
+                let faceIDs = Set(incidentEdges.flatMap { edge in
+                    (records[edge]?.triangles ?? []).compactMap { triangleID in
+                        (exactSurfacesByTriangle[triangleID] ?? inferredSurfacesByTriangle[triangleID])?.id.rawValue
+                    }
+                })
+                let pointID = SelectionEntityID(
+                    "\(mesh.sourceID.model):\(mesh.sourceID.node):\(mesh.sourceID.geometry):point:vertex:\(vertexIndex)"
+                )
+                let parentIDs = Set(incidentEdges.map { edge in
+                    SelectionEntityID(
+                        "\(mesh.sourceID.model):\(mesh.sourceID.node):\(mesh.sourceID.geometry):inferred:edge:\(edge.a)-\(edge.b)"
+                    )
+                })
+                vertexSeeds.append(
+                    PointSeed(
+                        position: mesh.vertices[vertexIndex],
+                        entitySource: .inferredGeometry,
+                        parentEntityIDs: parentIDs.isEmpty ? [pointID] : parentIDs,
+                        incidentFaceIDs: faceIDs
+                    )
+                )
+            }
+        }
+
+        let vertices = vertexSeeds.map { seed -> SelectedPoint in
+            let parents = seed.parentEntityIDs.sorted()
+            let identity = parents.map(\.rawValue).joined(separator: "+")
+            let id = SelectionEntityID(
+                "\(mesh.sourceID.model):\(mesh.sourceID.node):\(mesh.sourceID.geometry):point:vertex:\(identity)"
+            )
+            return SelectedPoint(
+                id: id,
+                source: mesh.sourceID,
+                entitySource: seed.entitySource,
+                kind: .vertex,
+                position: seed.position,
+                parentEntityIDs: seed.parentEntityIDs,
+                incidentFaceIDs: seed.incidentFaceIDs
+            )
+        }
+        return (vertices + curveCenters).sorted { $0.id < $1.id }
+    }
+
+    private static func mergeVertexSeed(
+        _ seed: PointSeed,
+        into seeds: inout [PointSeed],
+        tolerance: Float
+    ) {
+        if let index = seeds.firstIndex(where: { simd_distance($0.position, seed.position) <= tolerance }) {
+            seeds[index].parentEntityIDs.formUnion(seed.parentEntityIDs)
+            seeds[index].incidentFaceIDs.formUnion(seed.incidentFaceIDs)
+            if seed.entitySource == .exactTopology {
+                seeds[index].entitySource = .exactTopology
+            }
+        } else {
+            seeds.append(seed)
+        }
+    }
+
+    private static func isSelectableFeatureVertex(
+        _ vertexIndex: Int,
+        incidentEdges: [MeshEdgeID],
+        mesh: MeshSnapshot
+    ) -> Bool {
+        guard incidentEdges.count == 2 else { return true }
+        let origin = mesh.vertices[vertexIndex]
+        let directions = incidentEdges.compactMap { edge -> SIMD3<Float>? in
+            let other = edge.a == vertexIndex ? edge.b : edge.a
+            guard mesh.vertices.indices.contains(other) else { return nil }
+            return GeometryMath.normalized(mesh.vertices[other] - origin, fallback: .zero)
+        }
+        guard directions.count == 2 else { return true }
+        let straightContinuationLimit: Float = -0.906_307_8
+        return simd_dot(directions[0], directions[1]) > straightContinuationLimit
     }
 }
 

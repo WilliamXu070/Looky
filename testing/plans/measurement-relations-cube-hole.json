@@ -1,0 +1,256 @@
+{
+  "scenarios": [
+    {
+      "name": "measurement-relations-cube-hole",
+      "file": "testing/input/cube_hole.step",
+      "actions": [
+        {
+          "kind": "wait",
+          "label": "selection-index-ready",
+          "durationMs": 120
+        },
+        {
+          "kind": "resetMeasurementScale",
+          "label": "use-imported-step-units",
+          "measurementExpect": {
+            "kind": "empty",
+            "entityCount": 0
+          }
+        },
+        {
+          "kind": "setMeasurementUnit",
+          "label": "millimeters",
+          "unit": "mm",
+          "measurementExpect": {
+            "kind": "empty",
+            "entityCount": 0,
+            "unitMode": "mm"
+          }
+        },
+        {
+          "kind": "setCamera",
+          "label": "fixed-front-camera",
+          "orientationDegrees": [0, 0, 0],
+          "cameraPosition": [0, 0, 200],
+          "fieldOfView": 45,
+          "durationMs": 40
+        },
+        {
+          "kind": "selectAt",
+          "label": "single-top-edge",
+          "x": 0.5,
+          "y": 0.668,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "edge",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:62",
+            "curveType": "line",
+            "maxProjectedEdgeDistancePoints": 6
+          },
+          "measurementExpect": {
+            "kind": "edge",
+            "entityCount": 1,
+            "minTotalLength": 50.7,
+            "maxTotalLength": 50.9,
+            "unitMode": "mm"
+          },
+          "durationMs": 60
+        },
+        {
+          "kind": "selectAt",
+          "label": "parallel-bottom-edge",
+          "x": 0.5,
+          "y": 0.332,
+          "coordinateSpace": "normalizedViewport",
+          "modifiers": ["shift"],
+          "expect": {
+            "kind": "edge",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:57",
+            "curveType": "line",
+            "maxProjectedEdgeDistancePoints": 6
+          },
+          "measurementExpect": {
+            "kind": "multiEdge",
+            "entityCount": 2,
+            "relation": "parallel",
+            "minTotalLength": 101.5,
+            "maxTotalLength": 101.7,
+            "minMinimumDistance": 25.3,
+            "maxMinimumDistance": 25.5,
+            "unitMode": "mm"
+          },
+          "durationMs": 60
+        },
+        {
+          "kind": "selectAt",
+          "label": "replace-top-edge",
+          "x": 0.5,
+          "y": 0.668,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "edge",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:62"
+          },
+          "measurementExpect": {
+            "kind": "edge",
+            "entityCount": 1,
+            "unitMode": "mm"
+          },
+          "durationMs": 60
+        },
+        {
+          "kind": "selectAt",
+          "label": "perpendicular-left-edge",
+          "x": 0.274,
+          "y": 0.5,
+          "coordinateSpace": "normalizedViewport",
+          "modifiers": ["shift"],
+          "expect": {
+            "kind": "edge",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:53",
+            "curveType": "line",
+            "maxProjectedEdgeDistancePoints": 6
+          },
+          "measurementExpect": {
+            "kind": "multiEdge",
+            "entityCount": 2,
+            "relation": "perpendicular",
+            "minTotalLength": 76.1,
+            "maxTotalLength": 76.3,
+            "minMinimumDistance": 0,
+            "maxMinimumDistance": 0.001,
+            "unitMode": "mm"
+          },
+          "durationMs": 60
+        },
+        {
+          "kind": "selectAt",
+          "label": "single-front-plane",
+          "x": 0.6,
+          "y": 0.58,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "surface",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:face:130",
+            "surfaceType": "plane",
+            "surfaceTriangleCount": 67
+          },
+          "measurementExpect": {
+            "kind": "surface",
+            "entityCount": 1,
+            "minArea": 1163.7,
+            "maxArea": 1164.0,
+            "minPerimeter": 192.1,
+            "maxPerimeter": 192.5,
+            "unitMode": "mm"
+          },
+          "durationMs": 60
+        },
+        {
+          "kind": "selectAt",
+          "label": "mixed-plane-and-edge",
+          "x": 0.274,
+          "y": 0.5,
+          "coordinateSpace": "normalizedViewport",
+          "modifiers": ["shift"],
+          "expect": {
+            "kind": "edge",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:edge:53"
+          },
+          "measurementExpect": {
+            "kind": "mixed",
+            "entityCount": 2,
+            "relation": "coincident",
+            "minTotalLength": 25.3,
+            "maxTotalLength": 25.5,
+            "unitMode": "mm"
+          },
+          "durationMs": 60
+        },
+        {
+          "kind": "selectAt",
+          "label": "replace-front-plane",
+          "x": 0.6,
+          "y": 0.58,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "surface",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:face:130"
+          },
+          "measurementExpect": {
+            "kind": "surface",
+            "entityCount": 1,
+            "unitMode": "mm"
+          },
+          "durationMs": 60
+        },
+        {
+          "kind": "setCamera",
+          "label": "fixed-isometric-camera",
+          "orientationDegrees": [-35.26440328855924, 44.9999978371445, 0],
+          "cameraPosition": [147.83978271484375, 147.83978271484375, 147.83978271484375],
+          "fieldOfView": 45,
+          "durationMs": 40
+        },
+        {
+          "kind": "selectAt",
+          "label": "perpendicular-surface-pair",
+          "x": 0.5,
+          "y": 0.62,
+          "coordinateSpace": "normalizedViewport",
+          "modifiers": ["shift"],
+          "expect": {
+            "kind": "surface",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:face:128",
+            "surfaceType": "plane",
+            "surfaceTriangleCount": 2
+          },
+          "measurementExpect": {
+            "kind": "multiSurface",
+            "entityCount": 2,
+            "relation": "perpendicular",
+            "minArea": 2454.0,
+            "maxArea": 2454.4,
+            "minMinimumDistance": 0,
+            "maxMinimumDistance": 0.001,
+            "unitMode": "mm"
+          },
+          "durationMs": 60
+        },
+        {
+          "kind": "setMeasurementUnit",
+          "label": "switch-to-inches",
+          "unit": "in",
+          "measurementExpect": {
+            "kind": "multiSurface",
+            "entityCount": 2,
+            "relation": "perpendicular",
+            "minArea": 3.80,
+            "maxArea": 3.81,
+            "unitMode": "in"
+          },
+          "durationMs": 30
+        },
+        {
+          "kind": "setMeasurementUnit",
+          "label": "restore-millimeters",
+          "unit": "mm",
+          "measurementExpect": {
+            "kind": "multiSurface",
+            "entityCount": 2,
+            "relation": "perpendicular",
+            "minArea": 2454.0,
+            "maxArea": 2454.4,
+            "unitMode": "mm"
+          },
+          "durationMs": 30
+        }
+      ]
+    }
+  ]
+}

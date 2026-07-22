@@ -1,0 +1,38 @@
+{
+  "scenarios": [
+    {
+      "name": "semantic-step-cylinder-closeup",
+      "file": "testing/input/cube_hole.step",
+      "actions": [
+        {
+          "kind": "wait",
+          "label": "selection-index-ready",
+          "durationMs": 100
+        },
+        {
+          "kind": "setCamera",
+          "label": "close-isometric-camera",
+          "orientationDegrees": [-35.26440328855924, 44.9999978371445, -0.000013215309125452213],
+          "cameraPosition": [147.83978271484375, 147.83978271484375, 147.83978271484375],
+          "fieldOfView": 20,
+          "durationMs": 80
+        },
+        {
+          "kind": "selectAt",
+          "label": "internal-cylinder-closeup",
+          "x": 0.359,
+          "y": 0.383,
+          "coordinateSpace": "normalizedViewport",
+          "expect": {
+            "kind": "surface",
+            "source": "exact-topology",
+            "sourceEntityID": "step:fnv1a64-f223b6f0cb142072:brep:141:instance:0:face:129",
+            "surfaceType": "cylinder",
+            "surfaceTriangleCount": 126
+          },
+          "durationMs": 150
+        }
+      ]
+    }
+  ]
+}

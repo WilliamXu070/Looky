@@ -1,0 +1,30 @@
+{
+  "scenarios": [
+    {
+      "name": "hover-resolver-performance-cube-hole",
+      "file": "testing/input/cube_hole.step",
+      "actions": [
+        { "kind": "wait", "label": "selection-index-ready", "durationMs": 150 },
+        {
+          "kind": "setCamera",
+          "label": "fixed-isometric-camera",
+          "orientationDegrees": [-35.26440328855924, 44.9999978371445, -0.000013215309125452213],
+          "cameraPosition": [147.83978271484375, 147.83978271484375, 147.83978271484375],
+          "fieldOfView": 45,
+          "durationMs": 60
+        },
+        { "kind": "hoverAt", "label": "warm", "x": 0.5, "y": 0.62, "coordinateSpace": "normalizedViewport", "durationMs": 20 },
+        { "kind": "hoverAt", "label": "face-1", "x": 0.5, "y": 0.62, "coordinateSpace": "normalizedViewport", "hoverExpect": { "kind": "surface", "maxElapsedMs": 16 }, "durationMs": 20 },
+        { "kind": "hoverAt", "label": "edge-1", "x": 0.42, "y": 0.45, "coordinateSpace": "normalizedViewport", "hoverExpect": { "kind": "edge", "maxElapsedMs": 16 }, "durationMs": 20 },
+        { "kind": "hoverAt", "label": "center-1", "x": 0.44, "y": 0.45, "coordinateSpace": "normalizedViewport", "hoverExpect": { "kind": "point", "pointKind": "curve-center", "maxElapsedMs": 16 }, "durationMs": 20 },
+        { "kind": "hoverAt", "label": "vertex-1", "x": 0.3383, "y": 0.646, "coordinateSpace": "normalizedViewport", "hoverExpect": { "kind": "point", "pointKind": "vertex", "maxElapsedMs": 16 }, "durationMs": 20 },
+        { "kind": "hoverAt", "label": "blank-1", "x": 0.05, "y": 0.05, "coordinateSpace": "normalizedViewport", "hoverExpect": { "kind": "none", "maxElapsedMs": 16 }, "durationMs": 20 },
+        { "kind": "hoverAt", "label": "face-2", "x": 0.5, "y": 0.62, "coordinateSpace": "normalizedViewport", "hoverExpect": { "kind": "surface", "maxElapsedMs": 16 }, "durationMs": 20 },
+        { "kind": "hoverAt", "label": "edge-2", "x": 0.42, "y": 0.45, "coordinateSpace": "normalizedViewport", "hoverExpect": { "kind": "edge", "maxElapsedMs": 16 }, "durationMs": 20 },
+        { "kind": "hoverAt", "label": "center-2", "x": 0.44, "y": 0.45, "coordinateSpace": "normalizedViewport", "hoverExpect": { "kind": "point", "pointKind": "curve-center", "maxElapsedMs": 16 }, "durationMs": 20 },
+        { "kind": "hoverAt", "label": "vertex-2", "x": 0.3383, "y": 0.646, "coordinateSpace": "normalizedViewport", "hoverExpect": { "kind": "point", "pointKind": "vertex", "maxElapsedMs": 16 }, "durationMs": 20 },
+        { "kind": "hoverAt", "label": "blank-2", "x": 0.05, "y": 0.05, "coordinateSpace": "normalizedViewport", "hoverExpect": { "kind": "none", "maxElapsedMs": 16 }, "durationMs": 20 }
+      ]
+    }
+  ]
+}

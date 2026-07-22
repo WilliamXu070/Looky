@@ -6,6 +6,11 @@ app_path="${1:-$repo_root/build/Build/Products/Debug/QuickLookStep.app}"
 sample_path="${2:-/Users/williamxu/Downloads/thor luminos adaptor.step}"
 screenshot_path="${3:-/tmp/quicklook-ui-launch-check.png}"
 
+cleanup() {
+  osascript -e 'tell application "QuickLookStep" to quit' >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
 if [[ ! -d "$app_path" ]]; then
   echo "Missing app: $app_path" >&2
   exit 2

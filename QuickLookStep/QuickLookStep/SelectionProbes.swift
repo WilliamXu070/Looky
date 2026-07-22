@@ -86,6 +86,8 @@ extension DebugSelectableSCNView {
     ) -> SurfaceProbeRecord {
         let resolvedKind: String
         switch resolvedSelection {
+        case .point:
+            resolvedKind = "point"
         case .surface:
             resolvedKind = "surface"
         case .edge:
