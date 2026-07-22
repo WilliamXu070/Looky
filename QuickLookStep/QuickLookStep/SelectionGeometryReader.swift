@@ -1,4 +1,5 @@
 import Foundation
+import QuickLookCore
 import SceneKit
 import simd
 
@@ -8,6 +9,26 @@ struct SelectionGeometryMesh {
 }
 
 enum SelectionGeometryReader {
+    static func snapshot(
+        from geometry: SCNGeometry,
+        sourceID: MeshSourceID,
+        sourceUnit: ModelUnit = .unknown,
+        transform: ModelTransform = .init(),
+        topologyHints: TopologyHints? = nil
+    ) -> MeshSnapshot? {
+        guard let mesh = readMesh(from: geometry) else { return nil }
+        return MeshSnapshot(
+            sourceID: sourceID,
+            vertices: mesh.vertices,
+            triangleIndices: mesh.triangleVertexIndices.map {
+                SIMD3<Int32>(Int32($0[0]), Int32($0[1]), Int32($0[2]))
+            },
+            sourceUnit: sourceUnit,
+            transform: transform,
+            topologyHints: topologyHints
+        )
+    }
+
     static func readMesh(from geometry: SCNGeometry) -> SelectionGeometryMesh? {
         guard let vertexSource = geometry.sources(for: .vertex).first,
               let vertices = readVertices(from: vertexSource),

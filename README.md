@@ -1,62 +1,119 @@
-# QuickLookStep.app
+# QuickLookStep
 
-> **_Fast_** QuickLook & Finder thumbnail support for STEP (`.step` / `.stp`) 3d model files on macOS.
->
-> Built with Swift + SwiftUI, SceneKit, and [Formlabs/foxtrot](https://github.com/Formlabs/foxtrot).
+QuickLookStep is a macOS 14.6+ model viewer, Finder Quick Look preview, and
+thumbnail extension built with Swift, SwiftUI, SceneKit, Metal, and
+[Foxtrot](https://github.com/Formlabs/foxtrot).
 
-## ✨ What does it do?
+The application now includes finite edge and surface selection, measurement,
+selection diagnostics, and replayable click tests. Rendering uses SceneKit on
+Metal. Selection uses a CPU BVH by default; the optional Metal distance backend
+can be enabled for benchmark comparison.
 
-This allows you to **quickly** preview STEP files from Finder before opening them in your CAD tool. It will not render your STEP files as well as your CAD tool, but it will almost certainly open them faster!
+## Format Support
 
-https://github.com/user-attachments/assets/339781d5-3b7b-41c0-b411-d992e49ae5bc
+| Format | Primary importer | Fallback | Notes |
+| --- | --- | --- | --- |
+| STEP, STP | Foxtrot | None | Geometry only; source units are currently unknown because the FFI does not expose them. |
+| GLB, glTF | GLTFKit2 | Model I/O, then SceneKit | GLTFKit2 is the material-preserving path. External glTF resources must be resolvable from the asset URL. |
+| OBJ | SceneKit | Model I/O | Materials depend on referenced MTL and texture files. |
+| STL | SceneKit | Model I/O | Mesh geometry only. |
+| 3MF | Native package parser | SceneKit, then Model I/O | Object/component metadata is retained where available. |
+| SLDPRT, SLDASM | Sidecar resolver | None | Native SolidWorks B-rep import is not available. A same-named STEP/STL/OBJ/3MF/GLB sidecar is required. |
 
-## 🚧 Requirements
+Production import does not invoke Python, trimesh, FreeCAD, or AssetImportKit.
 
-* macOS 14.6 (Sonoma) or newer
-* M1 or above CPU (Apple Silicon)
+## Architecture
 
-## 💻 Installing
-
-You can either download `QuickLookStep.app` from the [Releases page](https://github.com/johnboiles/quick-look-step/releases) or via Homebrew:
-
-```sh
-brew tap johnboiles/homebrew-tap
-brew install quicklookstep
+```text
+ModelImportPipeline
+  -> format-specific ModelImporter
+  -> ImportedScene + diagnostics + source transform
+  -> SceneComposer
+  -> SceneKitMeshAdapter / MeshSnapshot
+  -> shared selection and measurement state
 ```
 
-After installing, open `QuickLookStep.app` once to enable the extensions.
+- `QuickLookStep/Shared/Import` owns format routing and loading.
+- `Packages/QuickLookCore` owns canonical geometry, BVH queries, typed selection
+  results, deterministic primitive fitting, and measurement math.
+- `SceneKitViewport` forwards native camera/input events.
+- `SelectionController` performs click transactions.
+- `SceneSelectionEngine` owns one canonical snapshot and derives the finite-edge
+  fitting index from that topology.
+- `SelectionOverlayRenderer` draws separate overlay nodes and never replaces
+  source model geometry.
+- `ViewerSession` owns loaded scene, diagnostics, measurement, and debug UI state.
+- `SelectionDebugRecorder` writes session JSON and screenshots off the resolver path.
 
-If for some reason the extensions aren't enabled automatically:
-* Open `System Settings` > `General` > `Login Items and Extensions`
-* Click the (i) next to `QuickLookStep`
-* Turn the switch on for both options under `QuickLookStep`
-* Cick `Done`
+Source-to-scene normalization is recorded on each scene. Measurements invert
+that transform so model-unit values do not change when display normalization
+changes.
 
-## 🕶️ Usage
-
-Open a Finder window and select a `.step` or `.stp` file. You should be able to preview it from Finder with Quick Look (using spacebar) or see the thumbnail in the sidebar in column view. `QuickLookStep.app` does _not_ need to be open for the extensions to work.
-
-## 🐞 Known issues
-
-* Some STEP files don't load. The underlying [Foxtrot](https://github.com/Formlabs/foxtrot) library doesn't like them.
-* Some STEP files have holes. Probably this is also a [Foxtrot](https://github.com/Formlabs/foxtrot) thing, but I could also be making a mistake in how I'm loading geometry to SceneKit. More testing against [Foxtrot](https://github.com/Formlabs/foxtrot) is needed. For this app, it's always better to be fast than perfect, but ideally it can be both 😀
-* The examples in the [Foxtrot README.md](https://github.com/Formlabs/foxtrot/blob/master/README.md) suggests Foxtrot supports textures. I don't have that hooked up in SceneKit yet.
-* Very large assemblies can take a long time to load and the extensions get stuck for a bit. Better timeouts could probably protect against this.
-
-## 🔫 Troubleshooting
-
-If you used older versions of `QuickLookStep.app` (especially <v1.5), make sure to delete them and to empty trash (`Finder` -> `Empty Trash...`). I've noticed macOS will sometimes try to use old extensions from the Trash! Then you should restart Finder:
+## Build
 
 ```sh
-killall Finder
+make foxtrot.h
+make libfoxtrot_universal.a
+xcodebuild \
+  -project QuickLookStep/QuickLookStep.xcodeproj \
+  -scheme QuickLookStep \
+  -configuration Debug \
+  -derivedDataPath build \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGN_IDENTITY="" \
+  build
 ```
 
-If restarting Finder doesn't make it work, I run this to do everything I know to do to clear the macOS cache:
+Install the commit build guard once per workspace:
+
+```sh
+make install-quicklook-hooks
+```
+
+## Run
+
+```sh
+open build/Build/Products/Debug/QuickLookStep.app --args \
+  --sample "$PWD/testing/input/cube_hole.step"
+```
+
+Selection diagnostics:
+
+```sh
+open build/Build/Products/Debug/QuickLookStep.app --args \
+  --sample "$PWD/testing/input/cube_hole.step" \
+  --selection-debug \
+  --selection-debug-hud=1 \
+  --selection-debug-output /tmp/quicklook-selection-debug
+```
+
+Use `QLS_ENABLE_SELECTION_METAL=1` to benchmark the Metal distance backend, or
+`QLS_DISABLE_SELECTION_METAL=1` to force CPU BVH behavior.
+
+## Test
+
+```sh
+swift test --package-path Packages/QuickLookCore
+testing/surface-selection/scripts/run_surface_layer_test.sh
+swift testing/selection-engine/scripts/replay_selection_engine.swift \
+  testing/selection-engine/reports/latest.json
+testing/edge-shape-detection/scripts/run_shape_detection_loop.sh
+testing/surface-selection/scripts/run_visible_surface_overlay_test.sh
+```
+
+See [testing/README.md](testing/README.md) for automated viewport actions,
+measurement expectations, debug sessions, and replay promotion.
+
+## Quick Look Registration
+
+After replacing the app in `/Applications`, refresh the extensions if Finder
+still uses an older build:
 
 ```sh
 pluginkit -r -u com.johnboiles.QuickLookStep.StepThumbnail
 pluginkit -r -u com.johnboiles.QuickLookStep.StepPreview
-pluginkit -a /Applications/QuickLookStep.app
+pluginkit -r -a /Applications/QuickLookStep.app
 qlmanage -r
 qlmanage -r cache
 pluginkit -e use -i com.johnboiles.QuickLookStep.StepThumbnail
@@ -65,10 +122,4 @@ killall QuickLookUIService
 killall Finder
 ```
 
-And of course rebooting is also worth trying!
-
-## 🤝 Contributing
-
-Let's make this better together. Issues and PRs are welcome.
-
-This project is licensed under the terms of the **MIT License**. Do what you want with it but I don't guarantee it works. If you do something neat with it, I'd always appreciate a shoutout!
+QuickLookStep is licensed under the MIT License.

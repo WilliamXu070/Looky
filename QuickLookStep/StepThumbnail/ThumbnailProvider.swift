@@ -12,11 +12,12 @@ import Metal
 
 class ThumbnailProvider: QLThumbnailProvider {
     override func provideThumbnail(for request: QLFileThumbnailRequest, _ handler: @escaping (QLThumbnailReply?, Error?) -> Void) {
-        // We perform heavy work off the main thread.
-        DispatchQueue.global(qos: .userInitiated).async {
+        Task.detached(priority: .userInitiated) {
             do {
-                // Build the scene using the shared helper.
-                let scene = try SceneBuilder.scene(for: request.fileURL)
+                let imported = try await ModelImportPipeline.load(
+                    ModelLoadRequest(url: request.fileURL, profile: .thumbnail)
+                )
+                let scene = imported.scene
 
                 // Set up an off-screen SceneKit renderer.
                 let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)

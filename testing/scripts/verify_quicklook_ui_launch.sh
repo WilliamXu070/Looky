@@ -16,7 +16,13 @@ if [[ ! -f "$sample_path" ]]; then
   exit 2
 fi
 
-pkill -f "QuickLookStep.app/Contents/MacOS/QuickLookStep" >/dev/null 2>&1 || true
+osascript -e 'tell application "QuickLookStep" to quit' >/dev/null 2>&1 || true
+for _ in {1..20}; do
+  if ! pgrep -x QuickLookStep >/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
 rm -f /tmp/quicklookstep-lifecycle.log "$screenshot_path"
 
 open -n -a "$app_path" --args \
@@ -24,13 +30,13 @@ open -n -a "$app_path" --args \
   --sample "$sample_path"
 
 for _ in {1..30}; do
-  if pgrep -f "QuickLookStep.app/Contents/MacOS/QuickLookStep" >/dev/null; then
+  if pgrep -x QuickLookStep >/dev/null; then
     break
   fi
   sleep 0.2
 done
 
-if ! pgrep -f "QuickLookStep.app/Contents/MacOS/QuickLookStep" >/dev/null; then
+if ! pgrep -x QuickLookStep >/dev/null; then
   echo "QuickLookStep process did not stay alive" >&2
   cat /tmp/quicklookstep-lifecycle.log 2>/dev/null || true
   exit 1
@@ -58,7 +64,11 @@ if [[ "${window_count:-0}" == "0" ]]; then
 fi
 
 sleep 1.0
-screencapture -x "$screenshot_path"
+osascript \
+  -e 'tell application "QuickLookStep" to activate' \
+  -e 'tell application "System Events" to tell process "QuickLookStep" to set frontmost to true' \
+  >/dev/null 2>&1 || true
+sleep 0.25
 
 top_window="$(swift -e '
 import CoreGraphics
@@ -72,7 +82,7 @@ for window in windows {
     let bounds = window[kCGWindowBounds as String] as? [String: Any] ?? [:]
     let width = bounds["Width"] as? Double ?? 0
     let height = bounds["Height"] as? Double ?? 0
-    guard layer == 0, alpha > 0, !owner.isEmpty else { continue }
+    guard layer == 0, alpha > 0, !owner.isEmpty, width >= 900, height >= 600 else { continue }
     print("\(owner)\t\(name)\t\(Int(width))\t\(Int(height))")
     exit(0)
 }
@@ -81,7 +91,6 @@ exit(1)
 ')"
 
 echo "top-window: $top_window"
-echo "screenshot: $screenshot_path"
 cat /tmp/quicklookstep-lifecycle.log 2>/dev/null || true
 
 IFS=$'\t' read -r top_owner top_name top_width top_height <<< "$top_window"
@@ -95,5 +104,8 @@ if (( top_width < 900 || top_height < 600 )); then
   echo "Expected QuickLookStep window to be at least 900x600, got ${top_width}x${top_height}" >&2
   exit 1
 fi
+
+screencapture -x "$screenshot_path"
+echo "screenshot: $screenshot_path"
 
 echo "QuickLookStep UI launch verified"

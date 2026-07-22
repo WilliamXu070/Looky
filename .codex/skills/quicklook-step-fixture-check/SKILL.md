@@ -205,3 +205,21 @@ For click bugs, use `quicklook-edge-selection-debug`. The main learned failure m
 ### Validation
 - Local harness result: `missing_converter=ExchangerConv`.
 - A valid test must first find `CADEX_CONVERTER` or a bundled CAD Exchanger Lab `ExchangerConv`, then produce a non-empty `Gear.step` before launching QuickLookStep.
+
+## 2026-07-21 Update
+
+### Problem context
+- Import fallback behavior had accumulated in `SceneBuilder`, including stale Python/conversion assumptions that obscured which format implementation actually ran.
+
+### What changed
+- Format ownership moved to `QuickLookStep/Shared/Import`: Foxtrot for STEP/STP, GLTFKit2 then Apple fallbacks for GLB/glTF, policy-driven SceneKit/Model I/O for OBJ/STL, native 3MF parsing, and sidecar-only SolidWorks resolution.
+- Removed production Python/trimesh and inactive AssetImportKit paths. `SceneBuilder` is now a compatibility facade.
+- Import diagnostics include source format, method, fallback attempts, source units, and source-to-scene transform.
+
+### Why it helped
+- A fixture failure now identifies one primary importer and ordered fallback evidence without silently entering a slow mesh-conversion path or presenting a 2D preview as CAD geometry.
+
+### Validation
+- `testing/scripts/run-testing.sh testing/plans/multi-format-orientation-speed.json /tmp/multi-format-import.json`
+- Check each scenario's `loadMethod`, `sourceFormat`, `fallbackAttempts`, `sourceUnit`, and `sourceToSceneScale`.
+- Open an SLDPRT without a same-name 3D sidecar and confirm it fails honestly; add a same-name STEP sidecar and confirm `solidworks-sidecar`.

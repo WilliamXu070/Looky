@@ -38,8 +38,10 @@ class PreviewViewController: NSViewController, QLPreviewingController {
     func preparePreviewOfFile(at url: URL) async throws {
         // Build the scene using our shared helper so that the preview and
         // thumbnail use identical geometry, camera, and lighting.
-        let scene = try SceneBuilder.scene(for: url)
-        scnView.scene = scene
+        let imported = try await ModelImportPipeline.load(
+            ModelLoadRequest(url: url, profile: .preview)
+        )
+        scnView.scene = imported.scene
     }
 
     private func addVersionWatermark() {

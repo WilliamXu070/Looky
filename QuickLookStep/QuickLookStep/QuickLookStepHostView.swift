@@ -22,17 +22,12 @@ struct QuickLookStepHostView: View {
     let edgeSelectionMode: EdgeSelectionMode
     let edgeOnlyMode: Bool
 
-    @State private var scene: SCNScene? = nil
-    @State private var loadError: String? = nil
     @State private var isTargeted: Bool = false
     @State private var didRunAutomatedTests = false
     @State private var hasManualLoad = false
     @State private var automatedTestingTask: Task<Void, Never>? = nil
-    @State private var currentModelPathForProbe: String = ""
-    @State private var currentLoaderMetadataForProbe: [String: String] = [:]
-    @State private var latestSelectionDebugEvent: SelectionDebugEvent? = nil
-    @State private var latestMeasurementState: SelectionMeasurementState = .empty
-    @State private var measurementPanelHidden = false
+    @StateObject var viewerSession = ViewerSession()
+    @StateObject private var viewerTestDriver = ViewerTestDriver()
     @AppStorage("quicklook.measurement.unit") private var measurementUnitRaw = MeasurementUnit.model.rawValue
     @AppStorage("quicklook.measurement.mmPerModelUnit") private var mmPerModelUnit = 1.0
 
@@ -83,7 +78,7 @@ struct QuickLookStepHostView: View {
 
     var body: some View {
         ZStack {
-            if let scene {
+            if let scene = viewerSession.scene {
                 SceneKitView(
                     scene: scene,
                     edgeFitSettings: .init(),
@@ -92,19 +87,20 @@ struct QuickLookStepHostView: View {
                     edgeProbeOutputDirectory: edgeProbeOutputPath ?? "/tmp/quicklook-edge-probe",
                     surfaceProbeMode: surfaceProbeEnabled,
                     surfaceProbeOutputDirectory: surfaceProbeOutputPath ?? "/tmp/quicklook-surface-probe",
-                    edgeProbeModelHint: currentModelPathForProbe,
+                    edgeProbeModelHint: viewerSession.modelPath,
                     edgeOnlyMode: edgeOnlyMode,
                     selectionDebugMode: selectionDebugEnabled || selectionDebugHUDEnabled,
                     selectionDebugOutputDirectory: selectionDebugOutputPath ?? "/tmp/quicklook-selection-debug",
-                    loaderMetadata: currentLoaderMetadataForProbe,
+                    loaderMetadata: viewerSession.loaderMetadata,
                     onSelectionDebugEvent: { event in
-                        latestSelectionDebugEvent = event
+                        viewerSession.latestDebugEvent = event
                     },
                     onMeasurementStateChanged: { state in
-                        latestMeasurementState = state
-                        measurementPanelHidden = false
+                        viewerSession.measurementState = state
+                        viewerSession.measurementPanelHidden = false
                     },
-                    manualSelectionEnabled: testingPlanPath == nil || hasManualLoad
+                    manualSelectionEnabled: testingPlanPath == nil || hasManualLoad,
+                    testDriver: viewerTestDriver
                 )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -113,7 +109,7 @@ struct QuickLookStepHostView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let loadError {
+            if let loadError = viewerSession.loadError {
                 VStack {
                     Spacer()
                     Text(loadError)
@@ -129,13 +125,13 @@ struct QuickLookStepHostView: View {
                     .allowsHitTesting(false)
             }
 
-            if !latestMeasurementState.isEmpty, !measurementPanelHidden {
+            if !viewerSession.measurementState.isEmpty, !viewerSession.measurementPanelHidden {
                 SelectionMeasurementPanel(
-                    state: latestMeasurementState,
+                    state: viewerSession.measurementState,
                     unit: measurementUnitBinding,
                     mmPerModelUnit: $mmPerModelUnit,
                     onClose: {
-                        measurementPanelHidden = true
+                        viewerSession.measurementPanelHidden = true
                     }
                 )
                 .padding(.top, 18)
@@ -195,55 +191,21 @@ struct QuickLookStepHostView: View {
         }
     }
 
-    @ViewBuilder
-    private var selectionDebugHUD: some View {
-        if let event = latestSelectionDebugEvent {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Selection Debug")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                Text("\(event.resolver.finalKind): \(event.resolver.reason)")
-                    .lineLimit(2)
-                Text("tris \(event.resolver.selectedSurfaceTriangleCount)  edges \(event.resolver.edgeCandidateCount)")
-                Text(
-                    "seed \(event.resolver.seedTriangle.map(String.init) ?? "-")  near \(formatDebugFloat(event.resolver.nearestFeatureEdgeDistance)) / \(formatDebugFloat(event.resolver.surfacePromotionThreshold))"
-                )
-                Text("accel \(event.resolver.nearestFeatureEdgeAcceleration ?? "-")")
-                Text(
-                    "vp \(formatDebugDouble(event.input.normalizedViewportPoint.first)) \(formatDebugDouble(event.input.normalizedViewportPoint.dropFirst().first))  \(event.eventID)"
-                )
-                if let warning = event.render.clippingWarning {
-                    Text(warning)
-                        .foregroundStyle(.orange)
-                        .lineLimit(2)
-                }
-            }
-            .font(.system(size: 11, weight: .regular, design: .monospaced))
-            .foregroundStyle(.white)
-            .padding(10)
-            .background(Color.black.opacity(0.72))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .frame(maxWidth: 520, alignment: .leading)
-        } else {
-            Text("Selection Debug: no clicks yet")
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
-                .foregroundStyle(.white)
-                .padding(10)
-                .background(Color.black.opacity(0.72))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-        }
-    }
-
+    @MainActor
     private func runInitialLoadIfNeeded() {
         if let initialFilePath,
            let testFileURL = resolveTestFilePath(initialFilePath) {
             hasManualLoad = true
             didRunAutomatedTests = true
-            _ = loadFile(testFileURL)
+            automatedTestingTask?.cancel()
+            automatedTestingTask = Task { @MainActor in
+                _ = await loadFile(testFileURL)
+            }
             return
         }
 
         if let initialFilePath {
-            loadError = "Could not resolve sample file: \(initialFilePath)"
+            viewerSession.loadError = "Could not resolve sample file: \(initialFilePath)"
         }
     }
 
@@ -256,7 +218,7 @@ struct QuickLookStepHostView: View {
                 let plan = try TestingPlan.load(from: URL(fileURLWithPath: testingPlanPath))
                 try await runAutomatedTest(plan: plan)
             } catch {
-                loadError = "Testing plan failed: \(error.localizedDescription)"
+                viewerSession.loadError = "Testing plan failed: \(error.localizedDescription)"
                 NSLog("Testing plan failed: %@", error.localizedDescription)
             }
         }
@@ -282,7 +244,7 @@ struct QuickLookStepHostView: View {
             }
             NSLog("Automated load scenario=%@ file=%@ ext=%@", scenario.name, fileURL.path, fileURL.pathExtension)
 
-            let (loadElapsedMs, loadMethod, loadMetadata) = loadFile(fileURL)
+            let (loadElapsedMs, loadMethod, loadMetadata) = await loadFile(fileURL)
             let sceneLoadSnapshotPath = snapshotPath(
                 for: scenario,
                 action: "load",
@@ -291,7 +253,7 @@ struct QuickLookStepHostView: View {
             )
             try? await Task.sleep(nanoseconds: 16_000_000)
 
-            guard let scene else {
+            guard let scene = viewerSession.scene else {
                 NSLog("Could not load scene for %@", scenario.file)
                 continue
             }
@@ -417,9 +379,10 @@ struct QuickLookStepHostView: View {
         }
     }
 
+    @MainActor
     private func handleManualLoad(_ url: URL) {
         guard SceneBuilder.canLoad(fileURL: url) else {
-            loadError = "Unsupported file type: \(url.lastPathComponent)"
+            viewerSession.loadError = "Unsupported file type: \(url.lastPathComponent)"
             return
         }
 
@@ -427,7 +390,9 @@ struct QuickLookStepHostView: View {
         automatedTestingTask?.cancel()
         hasManualLoad = true
         didRunAutomatedTests = true
-        _ = loadFile(url)
+        automatedTestingTask = Task { @MainActor in
+            _ = await loadFile(url)
+        }
     }
 
     private func resolveTestFilePath(_ path: String) -> URL? {
@@ -507,7 +472,7 @@ struct QuickLookStepHostView: View {
                 expectation: action.expect,
                 modifiers: action.modifiers
             )
-            let event = SelectionDebugActionDispatcher.shared.performSelectAt?(request)
+            let event = viewerTestDriver.performSelectAt(request)
             NSLog(
                 "Testing selectAt x=%.4f y=%.4f space=%@ modifiers=%@ result=%@ path=%@",
                 x,
@@ -668,7 +633,7 @@ struct QuickLookStepHostView: View {
     }
 
     private func measurementSummaryForTesting() -> SelectionMeasurementSummary {
-        latestMeasurementState.summary.withUnitMode(currentMeasurementUnit)
+        viewerSession.measurementState.summary.withUnitMode(currentMeasurementUnit)
     }
 
     private func measurementExpectationFailures(
@@ -681,8 +646,8 @@ struct QuickLookStepHostView: View {
 
         var failures: [String] = []
         if let kind = expectation.kind,
-           summary.kind != kind {
-            failures.append("measurement kind expected \(kind), got \(summary.kind)")
+           summary.kind.rawValue != kind {
+            failures.append("measurement kind expected \(kind), got \(summary.kind.rawValue)")
         }
         if let entityCount = expectation.entityCount,
            summary.entityCount != entityCount {
@@ -813,45 +778,4 @@ struct QuickLookStepHostView: View {
             .description
     }
 
-    private func formatDebugFloat(_ value: Float?) -> String {
-        guard let value, value.isFinite else { return "-" }
-        return String(format: "%.4f", value)
-    }
-
-    private func formatDebugDouble(_ value: Double?) -> String {
-        guard let value, value.isFinite else { return "-" }
-        return String(format: "%.3f", value)
-    }
-
-    // MARK: - Loading & snapshot
-    @discardableResult
-    private func loadFile(_ url: URL) -> (Double, String, [String: String]) {
-        loadError = nil
-
-        let needsSecurity = url.startAccessingSecurityScopedResource()
-        defer {
-            if needsSecurity { url.stopAccessingSecurityScopedResource() }
-        }
-
-        do {
-            let start = CFAbsoluteTimeGetCurrent()
-            print("Loading file at", url.path)
-            currentModelPathForProbe = url.path
-            latestSelectionDebugEvent = nil
-            latestMeasurementState = .empty
-            measurementPanelHidden = false
-            let loadResult = try SceneBuilder.sceneWithTrace(for: url)
-            currentLoaderMetadataForProbe = loadResult.metadata
-            scene = loadResult.scene
-            return ((CFAbsoluteTimeGetCurrent() - start) * 1000, loadResult.method, loadResult.metadata)
-        } catch {
-            scene = nil
-            currentLoaderMetadataForProbe = [:]
-            latestMeasurementState = .empty
-            measurementPanelHidden = false
-            loadError = error.localizedDescription
-            print("Failed to load model:", error.localizedDescription)
-            return (0, "failed:\(error.localizedDescription)", [:])
-        }
-    }
 }

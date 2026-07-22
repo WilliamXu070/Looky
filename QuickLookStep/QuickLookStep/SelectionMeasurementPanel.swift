@@ -66,9 +66,9 @@ struct SelectionMeasurementPanel: View {
             VStack(spacing: 4) {
                 ForEach(Array(state.entities.enumerated()), id: \.element.id) { index, entity in
                     HStack(spacing: 8) {
-                        Image(systemName: entity.kind == "surface" ? "square.grid.3x3.fill" : "line.diagonal")
+                        Image(systemName: entity.kind == .surface ? "square.grid.3x3.fill" : "line.diagonal")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(entity.kind == "surface" ? .orange : .blue)
+                            .foregroundStyle(entity.kind == .surface ? .orange : .blue)
                             .frame(width: 14)
 
                         Text(entity.label.isEmpty ? "Entity \(index + 1)" : entity.label)
@@ -243,14 +243,14 @@ struct SelectionMeasurementPanel: View {
     private var rows: [MeasurementRow] {
         let summary = state.summary
         switch summary.kind {
-        case "surface":
+        case .surface:
             return [
                 .init("Area", formatArea(summary.area)),
                 .init("Perimeter", formatLength(summary.perimeter)),
                 .init("Triangles", formatCount(summary.triangleCount)),
                 .init("Type", summary.surfaceType ?? "-"),
             ]
-        case "multiEdge":
+        case .multiEdge:
             return [
                 .init("Total Length", formatLength(summary.totalLength)),
                 .init("Minimum Distance", formatLength(summary.minimumDistance)),
@@ -259,40 +259,40 @@ struct SelectionMeasurementPanel: View {
                 .init("Angle", formatAngle(summary.angleDegrees)),
                 .init("Points", formatCount(summary.pointCount)),
             ]
-        case "edge":
+        case .edge:
             return [
                 .init("Length", formatLength(summary.length ?? summary.totalLength)),
                 .init("Radius", formatLength(summary.radius)),
                 .init("Shape", summary.shape ?? "-"),
                 .init("Points", formatCount(summary.pointCount)),
             ]
-        default:
+        case .empty:
             return [.init("Selection", "None")]
         }
     }
 
     private var selectionBadge: String {
         switch state.summary.kind {
-        case "surface":
+        case .surface:
             return "Surface"
-        case "multiEdge":
+        case .multiEdge:
             return "\(state.summary.entityCount) Edges"
-        case "edge":
+        case .edge:
             return "Single"
-        default:
+        case .empty:
             return "Empty"
         }
     }
 
     private var badgeColor: Color {
         switch state.summary.kind {
-        case "surface":
+        case .surface:
             return .orange
-        case "multiEdge":
+        case .multiEdge:
             return .blue
-        case "edge":
+        case .edge:
             return .orange
-        default:
+        case .empty:
             return .secondary
         }
     }

@@ -29,9 +29,15 @@ private struct SelectionMetalDistanceQuery {
     var segmentCount: UInt32
 }
 
-final class SelectionMetalAccelerator {
+final class SelectionMetalAccelerator: SelectionDistanceBackend {
+    let name = "metal"
     static let disabledByEnvironment = ProcessInfo.processInfo.environment["QLS_DISABLE_SELECTION_METAL"] == "1"
+    static let explicitlyEnabled = ProcessInfo.processInfo.environment["QLS_ENABLE_SELECTION_METAL"] == "1"
+        || ProcessInfo.processInfo.environment["QLS_SELECTION_METAL_MIN_SEGMENTS"] != nil
     static let minimumSegmentThreshold: Int = {
+        guard explicitlyEnabled else {
+            return .max
+        }
         guard let rawValue = ProcessInfo.processInfo.environment["QLS_SELECTION_METAL_MIN_SEGMENTS"],
               let parsedValue = Int(rawValue)
         else {
@@ -47,6 +53,8 @@ final class SelectionMetalAccelerator {
     private var cachedFingerprint: UInt64?
     private var cachedSegmentCount = 0
     private var cachedSegmentBuffer: MTLBuffer?
+    private var cachedPartialsCapacity = 0
+    private var cachedPartialsBuffer: MTLBuffer?
 
     init?() {
         guard Self.disabledByEnvironment == false,
@@ -83,11 +91,12 @@ final class SelectionMetalAccelerator {
 
     func nearestFeatureEdgeDistance(
         point: SIMD3<Float>,
-        segments: [SelectionFeatureSegment]
+        segments: [SelectionFeatureSegment],
+        fingerprint: UInt64
     ) -> Float? {
         guard !segments.isEmpty,
               segments.count <= Int(UInt32.max),
-              let segmentBuffer = buffer(for: segments),
+              let segmentBuffer = buffer(for: segments, fingerprint: fingerprint),
               let commandBuffer = commandQueue.makeCommandBuffer(),
               let encoder = commandBuffer.makeComputeCommandEncoder()
         else {
@@ -95,10 +104,7 @@ final class SelectionMetalAccelerator {
         }
 
         let threadgroups = (segments.count + threadsPerThreadgroup - 1) / threadsPerThreadgroup
-        guard let partialsBuffer = device.makeBuffer(
-            length: MemoryLayout<Float>.stride * threadgroups,
-            options: [.storageModeShared]
-        ) else {
+        guard let partialsBuffer = partialsBuffer(requiredCount: threadgroups) else {
             return nil
         }
 
@@ -134,8 +140,7 @@ final class SelectionMetalAccelerator {
         return sqrtf(bestSquared)
     }
 
-    private func buffer(for segments: [SelectionFeatureSegment]) -> MTLBuffer? {
-        let fingerprint = Self.fingerprint(segments)
+    private func buffer(for segments: [SelectionFeatureSegment], fingerprint: UInt64) -> MTLBuffer? {
         if cachedFingerprint == fingerprint,
            cachedSegmentCount == segments.count,
            let cachedSegmentBuffer {
@@ -162,6 +167,21 @@ final class SelectionMetalAccelerator {
         return buffer
     }
 
+    private func partialsBuffer(requiredCount: Int) -> MTLBuffer? {
+        if requiredCount <= cachedPartialsCapacity, let cachedPartialsBuffer {
+            return cachedPartialsBuffer
+        }
+        guard let buffer = device.makeBuffer(
+            length: MemoryLayout<Float>.stride * requiredCount,
+            options: [.storageModeShared]
+        ) else {
+            return nil
+        }
+        cachedPartialsCapacity = requiredCount
+        cachedPartialsBuffer = buffer
+        return buffer
+    }
+
     private static func threadgroupSize(maxTotalThreads: Int) -> Int {
         let cappedSize = max(1, min(256, maxTotalThreads))
         var size = 1
@@ -171,21 +191,4 @@ final class SelectionMetalAccelerator {
         return size
     }
 
-    private static func fingerprint(_ segments: [SelectionFeatureSegment]) -> UInt64 {
-        var hash: UInt64 = 14_695_981_039_346_656_037
-        func mix(_ value: Float) {
-            hash ^= UInt64(value.bitPattern)
-            hash &*= 1_099_511_628_211
-        }
-
-        for segment in segments {
-            mix(segment.start.x)
-            mix(segment.start.y)
-            mix(segment.start.z)
-            mix(segment.end.x)
-            mix(segment.end.y)
-            mix(segment.end.z)
-        }
-        return hash
-    }
 }

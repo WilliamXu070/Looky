@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B20000012E40000100000001 /* QuickLookCore in Frameworks */ = {isa = PBXBuildFile; productRef = B20000032E40000100000003 /* QuickLookCore */; };
 		A10000012E30000100000001 /* GLTFKit2 in Frameworks */ = {isa = PBXBuildFile; productRef = A10000042E30000100000004 /* GLTFKit2 */; };
 		A10000022E30000100000002 /* GLTFKit2 in Frameworks */ = {isa = PBXBuildFile; productRef = A10000052E30000100000005 /* GLTFKit2 */; };
 		A10000032E30000100000003 /* GLTFKit2 in Frameworks */ = {isa = PBXBuildFile; productRef = A10000062E30000100000006 /* GLTFKit2 */; };
@@ -96,6 +97,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		B30000012E41000100000001 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		42E196C82E2577BA009F11FB /* QuickLookStep */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -127,6 +133,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B20000012E40000100000001 /* QuickLookCore in Frameworks */,
 				A10000012E30000100000001 /* GLTFKit2 in Frameworks */,
 				42EF487E2E25818200C63E21 /* libfoxtrot_universal.a in Frameworks */,
 			);
@@ -159,6 +166,7 @@
 		42E196BD2E2577BA009F11FB = {
 			isa = PBXGroup;
 			children = (
+				B30000012E41000100000001 /* Shared */,
 				42E196C82E2577BA009F11FB /* QuickLookStep */,
 				42E196DF2E25781E009F11FB /* StepThumbnail */,
 				42E196F22E257832009F11FB /* StepPreview */,
@@ -210,10 +218,12 @@
 				42E196FD2E257832009F11FB /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				B30000012E41000100000001 /* Shared */,
 				42E196C82E2577BA009F11FB /* QuickLookStep */,
 			);
 			name = QuickLookStep;
 			packageProductDependencies = (
+				B20000032E40000100000003 /* QuickLookCore */,
 				A10000042E30000100000004 /* GLTFKit2 */,
 			);
 			productName = QuickLookStep;
@@ -233,6 +243,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				B30000012E41000100000001 /* Shared */,
 				42E196DF2E25781E009F11FB /* StepThumbnail */,
 			);
 			name = StepThumbnail;
@@ -256,6 +267,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				B30000012E41000100000001 /* Shared */,
 				42E196F22E257832009F11FB /* StepPreview */,
 			);
 			name = StepPreview;
@@ -297,6 +309,7 @@
 			mainGroup = 42E196BD2E2577BA009F11FB;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				B20000022E40000100000002 /* XCLocalSwiftPackageReference "../Packages/QuickLookCore" */,
 				A10000072E30000100000007 /* XCRemoteSwiftPackageReference "GLTFKit2" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -417,6 +430,7 @@
 				DEVELOPMENT_TEAM = 62G85M9ZN5;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
@@ -746,7 +760,19 @@
 		};
 /* End XCRemoteSwiftPackageReference section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		B20000022E40000100000002 /* XCLocalSwiftPackageReference "../Packages/QuickLookCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/QuickLookCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+		B20000032E40000100000003 /* QuickLookCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000022E40000100000002 /* XCLocalSwiftPackageReference "../Packages/QuickLookCore" */;
+			productName = QuickLookCore;
+		};
 		A10000042E30000100000004 /* GLTFKit2 */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A10000072E30000100000007 /* XCRemoteSwiftPackageReference "GLTFKit2" */;

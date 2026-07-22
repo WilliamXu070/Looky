@@ -1,4 +1,5 @@
 import Foundation
+import QuickLookCore
 import SceneKit
 import simd
 
@@ -55,6 +56,18 @@ enum MeasurementUnit: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum SelectionMeasurementKind: String, Codable {
+    case empty
+    case edge
+    case surface
+    case multiEdge
+}
+
+enum SelectionMeasurementEntityKind: String, Codable {
+    case edge
+    case surface
+}
+
 struct SelectionMeasurementExpectation: Codable {
     let kind: String?
     let entityCount: Int?
@@ -71,22 +84,22 @@ struct SelectionMeasurementExpectation: Codable {
 
 struct SelectionMeasurementState: Codable, Equatable {
     static let empty = SelectionMeasurementState(
-        kind: "empty",
+        kind: .empty,
         entities: [],
         summary: SelectionMeasurementSummary.empty
     )
 
-    let kind: String
+    let kind: SelectionMeasurementKind
     let entities: [SelectionMeasurementEntity]
     let summary: SelectionMeasurementSummary
 
     var isEmpty: Bool {
-        kind == "empty" || entities.isEmpty
+        kind == .empty || entities.isEmpty
     }
 
     static func singleEdge(_ entity: SelectionMeasurementEntity) -> SelectionMeasurementState {
         SelectionMeasurementState(
-            kind: "edge",
+            kind: .edge,
             entities: [entity],
             summary: SelectionMeasurementCalculator.summary(forEdges: [entity])
         )
@@ -94,10 +107,10 @@ struct SelectionMeasurementState: Codable, Equatable {
 
     static func singleSurface(_ entity: SelectionMeasurementEntity) -> SelectionMeasurementState {
         SelectionMeasurementState(
-            kind: "surface",
+            kind: .surface,
             entities: [entity],
             summary: SelectionMeasurementSummary(
-                kind: "surface",
+                kind: .surface,
                 entityCount: 1,
                 label: entity.label,
                 length: nil,
@@ -125,7 +138,7 @@ struct SelectionMeasurementState: Codable, Equatable {
             return .empty
         }
         return SelectionMeasurementState(
-            kind: uniqueEdges.count == 1 ? "edge" : "multiEdge",
+            kind: uniqueEdges.count == 1 ? .edge : .multiEdge,
             entities: uniqueEdges,
             summary: SelectionMeasurementCalculator.summary(forEdges: uniqueEdges)
         )
@@ -134,7 +147,7 @@ struct SelectionMeasurementState: Codable, Equatable {
 
 struct SelectionMeasurementEntity: Codable, Equatable, Identifiable {
     let id: String
-    let kind: String
+    let kind: SelectionMeasurementEntityKind
     let label: String
     let sourceIDs: [String]
     let length: Float?
@@ -146,9 +159,20 @@ struct SelectionMeasurementEntity: Codable, Equatable, Identifiable {
     let shape: String?
     let surfaceType: String?
     let points: [[Float]]
+    let displayPoints: [[Float]]?
+    let sourcePoints: [[Float]]?
 
     var simdPoints: [SIMD3<Float>] {
         points.compactMap { point in
+            guard point.count >= 3 else { return nil }
+            return SIMD3<Float>(point[0], point[1], point[2])
+        }
+    }
+
+
+    var simdDisplayPoints: [SIMD3<Float>] {
+        let values = displayPoints ?? points
+        return values.compactMap { point in
             guard point.count >= 3 else { return nil }
             return SIMD3<Float>(point[0], point[1], point[2])
         }
@@ -157,7 +181,7 @@ struct SelectionMeasurementEntity: Codable, Equatable, Identifiable {
 
 struct SelectionMeasurementSummary: Codable, Equatable {
     static let empty = SelectionMeasurementSummary(
-        kind: "empty",
+        kind: .empty,
         entityCount: 0,
         label: "No selection",
         length: nil,
@@ -177,7 +201,7 @@ struct SelectionMeasurementSummary: Codable, Equatable {
         distanceDetail: nil
     )
 
-    let kind: String
+    let kind: SelectionMeasurementKind
     let entityCount: Int
     let label: String
     let length: Float?
@@ -256,7 +280,7 @@ enum SelectionMeasurementCalculator {
     static func uniqueEdges(_ entities: [SelectionMeasurementEntity]) -> [SelectionMeasurementEntity] {
         var seen: Set<String> = []
         var result: [SelectionMeasurementEntity] = []
-        for entity in entities where entity.kind == "edge" {
+        for entity in entities where entity.kind == .edge {
             if seen.insert(entity.id).inserted {
                 result.append(entity)
             }
@@ -282,7 +306,7 @@ enum SelectionMeasurementCalculator {
 
         if edgeEntities.count == 1, let entity = edgeEntities.first {
             return SelectionMeasurementSummary(
-                kind: "edge",
+                kind: .edge,
                 entityCount: 1,
                 label: entity.label,
                 length: entity.length,
@@ -304,7 +328,7 @@ enum SelectionMeasurementCalculator {
         }
 
         return SelectionMeasurementSummary(
-            kind: "multiEdge",
+            kind: .multiEdge,
             entityCount: edgeEntities.count,
             label: "\(edgeEntities.count) Edges",
             length: nil,
@@ -330,50 +354,50 @@ enum SelectionMeasurementCalculator {
         selectionModel: SelectionModel,
         node: SCNNode
     ) -> SelectionSurfaceMeasurements {
-        let selected = Set(triangleIndices)
-        var area: Float = 0
-        var edgeUseCounts: [SelectionEdgeKey: Int] = [:]
+        var remappedVertices: [SIMD3<Float>] = []
+        var sourceToRemapped: [Int: Int] = [:]
+        var remappedTriangles: [SIMD3<Int32>] = []
 
-        for triangleIndex in triangleIndices {
-            guard triangleIndex >= 0, triangleIndex < selectionModel.triangles.count else {
-                continue
+        for triangleIndex in triangleIndices where selectionModel.triangles.indices.contains(triangleIndex) {
+            let sourceTriangle = selectionModel.triangles[triangleIndex]
+            var mapped: [Int32] = []
+            for sourceIndex in sourceTriangle.vertexIndices {
+                if let existing = sourceToRemapped[sourceIndex] {
+                    mapped.append(Int32(existing))
+                    continue
+                }
+                guard let sourcePoint = worldVertex(
+                    sourceIndex,
+                    selectionModel: selectionModel,
+                    node: node
+                ) else {
+                    mapped.removeAll()
+                    break
+                }
+                let next = remappedVertices.count
+                remappedVertices.append(sourcePoint)
+                sourceToRemapped[sourceIndex] = next
+                mapped.append(Int32(next))
             }
-
-            let triangle = selectionModel.triangles[triangleIndex]
-            guard let a = worldVertex(triangle.vertexIndices[0], selectionModel: selectionModel, node: node),
-                  let b = worldVertex(triangle.vertexIndices[1], selectionModel: selectionModel, node: node),
-                  let c = worldVertex(triangle.vertexIndices[2], selectionModel: selectionModel, node: node)
-            else {
-                continue
-            }
-            area += simd_length(simd_cross(b - a, c - a)) * 0.5
-
-            for edgeKey in triangle.edgeKeys {
-                edgeUseCounts[edgeKey, default: 0] += 1
+            if mapped.count == 3 {
+                remappedTriangles.append(SIMD3<Int32>(mapped[0], mapped[1], mapped[2]))
             }
         }
 
-        var perimeter: Float = 0
-        for (edgeKey, count) in edgeUseCounts where count == 1 {
-            guard selected.contains(where: { triangleIndex in
-                selectionModel.triangles.indices.contains(triangleIndex)
-                    && selectionModel.triangles[triangleIndex].edgeKeys.contains(edgeKey)
-            }),
-            let a = worldVertex(edgeKey.a, selectionModel: selectionModel, node: node),
-            let b = worldVertex(edgeKey.b, selectionModel: selectionModel, node: node)
-            else {
-                continue
-            }
-            perimeter += simd_distance(a, b)
-        }
-
-        return SelectionSurfaceMeasurements(area: area, perimeter: perimeter)
+        let mesh = MeshSnapshot(
+            sourceID: MeshSourceID(model: "measurement", node: "selected", geometry: "surface"),
+            vertices: remappedVertices,
+            triangleIndices: remappedTriangles
+        )
+        let measurement = MeasurementEngine.surface(
+            mesh: mesh,
+            triangles: mesh.triangles.map(\.id)
+        )
+        return SelectionSurfaceMeasurements(area: measurement.area, perimeter: measurement.perimeter)
     }
 
     static func polylineLength(_ points: [SIMD3<Float>]) -> Float {
-        zip(points, points.dropFirst()).reduce(Float(0)) { partial, pair in
-            partial + simd_distance(pair.0, pair.1)
-        }
+        MeasurementEngine.edgeLength(points: points)
     }
 
     static func minimumDistance(between polylines: [[SIMD3<Float>]]) -> Float? {

@@ -55,7 +55,7 @@ private func parseLaunchSettings(from arguments: [String]) -> LaunchSettings {
     var selectionDebugOutputPath: String?
     var selectionDebugHUDEnabled = false
     var edgeSelectionMode: EdgeSelectionMode = .fitted
-    var edgeOnlyMode = true
+    var edgeOnlyMode = false
 
     while idx < arguments.count {
         let arg = arguments[idx]
@@ -225,7 +225,7 @@ private final class QuickLookAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
-        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        NSRunningApplication.current.activate(options: [.activateAllWindows])
         appendQuickLookStepLifecycleEvent("app-delegate-did-finish")
         NSLog("QuickLookStep app launched - windowed mode activated")
 
@@ -303,8 +303,8 @@ private final class QuickLookAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         restoreHostWindowSizeIfNeeded(hostWindow)
-        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        NSRunningApplication.current.activate(options: [.activateAllWindows])
+        NSApplication.shared.activate()
         hostWindow.makeKeyAndOrderFront(nil)
         hostWindow.orderFrontRegardless()
         appendQuickLookStepLifecycleEvent("bring-front-\(reason) \(windowStateDescription(hostWindow))")

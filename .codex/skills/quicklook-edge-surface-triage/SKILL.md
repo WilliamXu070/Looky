@@ -134,6 +134,48 @@ testing/scripts/verify_quicklook_ui_launch.sh
 - `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`
 - `QLS_FORCE_DIRECT_LAUNCH=1 testing/scripts/run-testing.sh testing/plans/orientation-zoom.json testing/results/diagnosis-orientation-zoom-direct.json`
 
+## 2026-07-21 Update
+
+### Problem context
+- Selection previously parsed one geometry into two independently classified topology models, used raw string measurement kinds, and could replace source geometry for a surface highlight.
+
+### What changed
+- `SceneSelectionEngine` now owns one `MeshSnapshot`/`SelectionModel`; the finite edge fitter's `EdgePrimitiveIndex` derives adjacency and feature flags from that canonical model instead of rebuilding topology from `SCNGeometry`.
+- Direct `SCNHitTestResult.faceIndex` mapping is primary, with geometric triangle search used only as fallback.
+- Edge IDs are scoped by model and scene-node path, finite selection stops at sharp connected corners, and surface overlays use separate depth-tested geometry.
+- Resolver screenshots are scheduled outside selection resolution. Measurements retain normalized viewer values for replay compatibility and preserve source-space points plus the normalization transform as metadata.
+- CPU `FeatureEdgeBVH` is default; set `QLS_ENABLE_SELECTION_METAL=1` only for measured comparison.
+
+### Why it helped
+- Removes competing topology classification, one-click edge over-merge across sharp corners, highlight mutation, and screenshot latency from the resolver path while preserving source coordinates for future calibrated dimensions.
+
+### Validation
+- `swift test --package-path Packages/QuickLookCore`
+- `testing/surface-selection/scripts/run_surface_layer_test.sh`
+- `testing/edge-shape-detection/scripts/run_shape_detection_loop.sh`
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/measurement-single-edge-no-overmerge-cube-hole.json /tmp/measurement-single-edge.json`
+- Repeat the same `selectAt` event 100 times and compare `selectedEntityID`, result kind, and selected counts.
+
+```text
+content change: documented the canonical SelectionModel plus derived EdgePrimitiveIndex boundary and source-coordinate measurement metadata.
+example usage: when edge fitting disagrees with surface resolution, inspect the canonical SelectionModel inputs instead of adding another SCNGeometry topology scan.
+```
+
+## 2026-07-21 Combined Selection Default Update
+
+### Problem context
+- Surface goldens produced correct candidates but final results were `none` or `edge` because an earlier temporary setting left `edgeOnlyMode` enabled by default.
+
+### What changed
+- Restored combined edge/surface resolution as the launch default. `--edge-only` remains available for explicit edge-only diagnosis.
+
+### Why it helped
+- Prevents valid surface candidates from being rejected before promotion while preserving the focused edge workflow when requested.
+
+### Validation
+- Run `testing/plans/selection-debug-cube-hole.json`; expect `edge`, 2-triangle surface, 67-triangle curved surface, then `none`.
+- Inspect event input and confirm `edgeOnlyMode` is `false` unless `--edge-only` was passed.
+
 ## 2026-07-03 Update
 
 ### Problem context

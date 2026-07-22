@@ -1,94 +1,120 @@
 # QuickLookStep Testing
 
-This folder contains a lightweight, script-driven test harness for evaluating
-input response + orientation/zoom behavior as you add features.
+The test harness drives the real macOS application, records camera and
+selection telemetry, and writes generated output under `testing/results`.
 
-## Structure
+## Test Plans
 
-- `plans/` – JSON test plans
-- `scripts/` – runner scripts
-- `results/` – generated output from runs
-
-## Test plan format
-
-A test plan is JSON with one or more scenarios:
+Plans contain scenarios with a model path and ordered actions:
 
 ```json
 {
   "scenarios": [
     {
-      "name": "friendly-name",
+      "name": "cube-hole-edge",
       "file": "testing/input/cube_hole.step",
       "actions": [
         { "kind": "rotateY", "value": 25, "durationMs": 120 },
-        { "kind": "zoom", "value": -6, "durationMs": 120 },
-        { "kind": "wait", "durationMs": 200 }
+        {
+          "kind": "selectAt",
+          "x": 0.42,
+          "y": 0.61,
+          "coordinateSpace": "normalizedViewport",
+          "expect": { "kind": "edge" }
+        }
       ]
     }
   ]
 }
 ```
 
-Supported action kinds:
-- `rotateX`, `rotateY`, `rotateZ` (value in degrees)
-- `zoom` (`value` is delta field-of-view in degrees; clamp is currently 5..120)
-- `wait` (`durationMs` only)
+Supported actions:
 
-## Run a test suite
+- `rotateX`, `rotateY`, `rotateZ`: degrees in `value`.
+- `zoom`: field-of-view delta in `value`.
+- `wait`: delay from `durationMs`.
+- `selectSurface`: legacy surface-overlay smoke action.
+- `selectAt`: real click resolution using normalized or viewport coordinates.
 
-```bash
-./testing/scripts/run-testing.sh [path/to/plan.json] [path/to/output.json]
+`selectAt` accepts `modifiers: ["shift"]` to add an edge or
+`modifiers: ["command"]` to toggle an edge. Surface selection replaces the
+current selection. A blank unmodified click clears it.
+
+Selection expectations support `kind`, exact/min/max surface triangle counts,
+forbidden labels, and rejected-alternative requirements. Measurement
+expectations support kind, entity count, length/distance/area/perimeter ranges,
+and unit mode.
+
+## Commands
+
+Run any plan:
+
+```sh
+testing/scripts/run-testing.sh \
+  testing/plans/selection-debug-cube-hole.json \
+  /tmp/selection-debug-cube-hole.json
 ```
 
-Run one sample quickly (builds a throwaway plan for a single file):
+Run one model through a temporary plan:
 
-```bash
-./testing/scripts/run-sample.sh testing/input/cube_hole.step testing/results/sample-quickrun.json
+```sh
+testing/scripts/run-sample.sh \
+  testing/input/cube_hole.step \
+  /tmp/cube-hole-sample.json
 ```
 
-### Run a single sample directly
+Run focused regression layers:
 
-You can open the app and load one sample file immediately with:
-
-```bash
-build/Build/Products/Release/QuickLookStep.app/Contents/MacOS/QuickLookStep --sample testing/input/cube_hole.step
+```sh
+swift test --package-path Packages/QuickLookCore
+testing/surface-selection/scripts/run_surface_layer_test.sh
+swift testing/selection-engine/scripts/replay_selection_engine.swift \
+  testing/selection-engine/reports/latest.json
+testing/edge-shape-detection/scripts/run_shape_detection_loop.sh
+testing/surface-selection/scripts/run_visible_surface_overlay_test.sh
 ```
 
-Or using a plan:
+Measurement plans:
 
-```bash
-build/Build/Products/Release/QuickLookStep.app/Contents/MacOS/QuickLookStep \
-  --test-plan testing/plans/orientation-zoom.json \
-  --test-output testing/results/manual-run.json \
-  --auto-quit
+```sh
+QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 \
+  testing/scripts/run-testing.sh \
+  testing/plans/measurement-single-edge-no-overmerge-cube-hole.json \
+  /tmp/measurement-single-edge.json
+
+QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 \
+  testing/scripts/run-testing.sh \
+  testing/plans/measurement-multi-edge-details-cube-hole.json \
+  /tmp/measurement-multi-edge.json
 ```
 
-You can also launch the app directly with one sample path:
+## Debug Sessions and Replay
 
-```bash
-./build/Build/Products/Release/QuickLookStep.app/Contents/MacOS/QuickLookStep --sample testing/input/cube_hole.step --auto-quit
+Live debug mode writes one event per click plus an ordered session manifest:
+
+```sh
+QLS_SELECTION_DEBUG=1 \
+QLS_SELECTION_DEBUG_OUTPUT=/tmp/quicklook-selection-debug \
+testing/scripts/run-testing.sh \
+  testing/plans/selection-debug-cube-hole.json \
+  /tmp/selection-debug-run.json
 ```
 
-Run this script from a macOS desktop session (the app uses SwiftUI/SceneKit and requires AppKit).  
-From CI/headless shells it can fail to start with an `Abort trap` before creating output.
+Replay a captured session:
 
-The runner reads:
-- `QLS_TEST_PLAN`: test plan file
-- `QLS_TEST_OUTPUT`: output JSON path
-- `QLS_TEST_AUTO_QUIT=1`: closes the app after run
+```sh
+swift testing/selection-debug/replay_selection_session.swift \
+  /tmp/quicklook-selection-debug/selection-debug-session.json \
+  /tmp/selection-debug-replay.json
+```
 
-Output JSON includes:
-- `loadTimeMs` per scenario
-- timeline events with `orientationDegrees`, `cameraPosition`, `fieldOfView`, and `distanceFromOrigin`
+Promote one captured event into a regression plan:
 
-`elapsedMs` is wall-clock time relative to run start in each sample.
+```sh
+python3 testing/selection-debug/promote_debug_event.py \
+  /tmp/quicklook-selection-debug/<event-id>.json \
+  /tmp/promoted-selection-plan.json
+```
 
-## Add new scenarios
-
-Drop new `*.step` files into `testing/input/` (or reference absolute paths)
-and add new scenarios to a new plan file.
-
-`testing/input/` ships with a few small samples from the repo:
-- `cube_hole.step`
-- `cuboid.step`
-- `abstract_pca.step`
+Generated reports, logs, and screenshots are ignored. Keep reusable input
+models under `testing/input` and curated plans under `testing/plans`.

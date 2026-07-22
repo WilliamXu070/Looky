@@ -180,3 +180,43 @@ xcodebuild \
 - `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
 - `testing/scripts/verify_quicklook_ui_launch.sh /Users/williamxu/Desktop/Projects/quicklook/build/Build/Products/Debug/QuickLookStep.app "/Users/williamxu/Downloads/godzilla-evolved-from-lukiethewesely13/source/Godzilla Evolved.glb" /tmp/quicklook-ui-launch-check-godzilla-gltfkit2.png`
 - Check app stdout for `loadMethod = gltfkit2`; use `QLS_DISABLE_GLTFKIT2=1` to compare against the old fallback path.
+
+## 2026-07-21 Update
+
+### Problem context
+- The app now depends on the local `Packages/QuickLookCore` package and format import code shared by the app, Preview, and Thumbnail targets.
+
+### What changed
+- Added `swift test --package-path Packages/QuickLookCore` as the pure geometry/selection gate before Xcode integration tests.
+- Documented that `QuickLookStep/Shared` is a synchronized source root for all three targets, while `QuickLookStep/QuickLookStep` remains app-only.
+- Metal selection is benchmark opt-in with `QLS_ENABLE_SELECTION_METAL=1`; CPU BVH is the production default.
+
+### Why it helped
+- Catches deterministic geometry regressions without launching AppKit and prevents importer files from compiling only in the host app while breaking Quick Look extensions.
+
+### Validation
+- `swift test --package-path Packages/QuickLookCore`
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- Confirm `QuickLookStep.app`, `StepPreview.appex`, and `StepThumbnail.appex` exist under `build/Build/Products/Debug`.
+
+## 2026-07-22 Update
+
+### Problem context
+- Xcode 17's injected Debug-dylib executable could be rejected by macOS when the repository's signing-disabled build was launched directly by golden tests.
+
+### What changed
+- Set `ENABLE_DEBUG_DYLIB = NO` for the project Debug configuration so app and extension products use conventional executables.
+
+### Why it helped
+- Keeps the documented unsigned build compatible with `QLS_FORCE_DIRECT_LAUNCH=1` without mutating the built app with an ad-hoc signing step.
+
+### Validation
+- `xcodebuild -project QuickLookStep/QuickLookStep.xcodeproj -scheme QuickLookStep -configuration Debug -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build`
+- Confirm `QuickLookStep.app/Contents/MacOS/QuickLookStep.debug.dylib` is absent.
+- `QLS_FORCE_DIRECT_LAUNCH=1 QLS_SELECTION_DEBUG=1 testing/scripts/run-testing.sh testing/plans/selection-debug-cube-hole.json /tmp/selection-debug-direct.json`
+- The UI verifier quits stale app instances through AppKit, reactivates QuickLookStep before capture, and ignores layer-zero windows smaller than 900x600, preventing runner self-termination and browser menu-bar false failures.
+
+```text
+content change: disabled Xcode's injected Debug-dylib layout for repository Debug builds.
+example usage: after a signing-disabled build, run the selection golden directly without codesign repair or LaunchServices.
+```

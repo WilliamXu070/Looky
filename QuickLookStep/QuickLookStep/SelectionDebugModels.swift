@@ -23,14 +23,6 @@ struct SelectionDebugSelectAtRequest {
     let modifiers: [String]?
 }
 
-final class SelectionDebugActionDispatcher {
-    static let shared = SelectionDebugActionDispatcher()
-
-    var performSelectAt: ((SelectionDebugSelectAtRequest) -> SelectionDebugEvent?)?
-
-    private init() {}
-}
-
 struct SelectionDebugSession: Codable {
     let schemaVersion: Int
     let producedAt: String
@@ -64,6 +56,7 @@ struct SelectionDebugEvent: Codable {
         SelectionDebugEventSummary(
             eventID: eventID,
             kind: resolver.finalKind,
+            selectedEntityID: resolver.selectedEntityID,
             reason: resolver.reason,
             surfaceTriangleCount: resolver.selectedSurfaceTriangleCount,
             edgeCandidateCount: resolver.edgeCandidateCount,
@@ -79,6 +72,7 @@ struct SelectionDebugEvent: Codable {
 struct SelectionDebugEventSummary: Codable {
     let eventID: String
     let kind: String
+    let selectedEntityID: String?
     let reason: String
     let surfaceTriangleCount: Int
     let edgeCandidateCount: Int

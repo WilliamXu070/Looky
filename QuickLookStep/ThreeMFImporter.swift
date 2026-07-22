@@ -52,7 +52,7 @@ enum ThreeMFImporter {
         let parser = ThreeMFModelParser()
         let model = try parser.parse(data: xml)
         let modelRoot = try buildNode(from: model)
-        let scene = try SceneBuilder.standardizedScene(from: modelRoot, fileName: url.lastPathComponent)
+        let scene = try SceneComposer.compose(from: modelRoot, fileName: url.lastPathComponent)
 
         return ThreeMFImportResult(
             scene: scene,

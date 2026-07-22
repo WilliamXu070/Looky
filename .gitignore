@@ -130,6 +130,15 @@ playground.xcworkspace
 # .swiftpm
 
 .build/
+/QuickLookStep/build/
+
+# Generated viewer diagnostics. Curated fixtures/plans already tracked remain available.
+/testing/**/reports/
+/testing/results/*.json
+/testing/results/*.log
+/testing/results/screenshots/
+/testing/results/selection-debug-replay-events/
+/testing/plans/.sample-run.*
 
 # CocoaPods
 #
